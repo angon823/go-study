@@ -8,9 +8,11 @@
 
 当然，也发现了一些kcp与tcp不一样的地方。
 比如：一个在服务器端非常不一样的例子：
-    对于tcp来说，每个客户端连接都会有一个fd，因为tcp是面向链接的，有了fd才建立起四元组才能和对端发信，读写都是在这个fd上。
-    但是kcp，只有一个系统fd在读写，就是listen的这个。因为kcp是udp实现的，不需要面向链接也没法面向链接，kcp根据从recvfrom中返回的RemoteAddr
+   对于tcp来说，每个客户端连接都会有一个fd，因为tcp是面向链接的，有了fd才建立起四元组才能和对端发信，读写都是在这个fd上
+    
+   但是kcp，只有一个系统fd在读写，就是listen的这个。因为kcp是udp实现的，不需要面向链接也没法面向链接，kcp根据从recvfrom中返回的RemoteAddr
 来区分不同的“链接”，并且为每个新的RemoteAddr创建一个session，这个session可以认为是“用户层fd”，消息来了根据RemoteAddr分发给对应session（放到buffer里，等用户调用Read）。
+
 从客户端的角度来看，所有客户端都是知道服务器的同一个ip+port组合，有消息都是udp往这发，所以服务器也都是从这里收，写的时候udp直接指定RemoteAddr sendto就可以，也没有必要新建fd
 
 kcp之所以快，和它的用户态也有很大关系。
