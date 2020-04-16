@@ -1,0 +1,3 @@
+[submodule "src/github.com/xtaci/kcp-go"]
+	path = src/github.com/xtaci/kcp-go
+	url = https://github.com/xtaci/kcp-go
