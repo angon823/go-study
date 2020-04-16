@@ -3,14 +3,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
+	"runtime"
 	"time"
 )
 
 type Config struct {
 	LocalAddr       string
 	RemoteAddr      string
-	Mode            int8 // 0 -> 2 | slow -> fast
+	Mode            int8 // 0 -> 4 | slow -> fast
 	ReadBufferSize  int
 	WriteBufferSize int
 
@@ -43,34 +45,30 @@ func GetLongRandStr() []byte {
 	return str
 }
 
-func main() {
-	//server.Start(GetConfig().LocalAddr)
-	//
-	//time.Sleep(2 * time.Second)
-	//
-	//const N = 10
-	//for i := 0; i < N; i++ {
-	//	ci := NewKcpClientNetwork(GetConfig().LocalAddr, i)
-	//	ci.Start()
-	//	msg := Message{ci.s.GetSeqID(), fmt.Sprintf("i am ci:%d", i)}
-	//	data, _ := json.Marshal(msg)
-	//	ci.s.Write(data)
-	//}
-	//
-	//for {
-	//	time.Sleep(1 * time.Second)
-	//}
+func PrintCover() {
+	if x := recover(); x != nil {
+		log.Println(x)
+		i := 0
+		funcName, file, line, ok := runtime.Caller(i)
+		for ok {
+			log.Printf("frame %v:[func:%v,file:%v,line:%v]\n", i, runtime.FuncForPC(funcName).Name(), file, line)
+			i++
+			funcName, file, line, ok = runtime.Caller(i)
+		}
 
+	}
+}
+
+func main() {
 	server.Start(GetConfig().LocalAddr)
 
 	time.Sleep(2 * time.Second)
 
-	const N = 100
-	const X = 100
+	const N = 1
+	const X = 10
 	for i := 0; i < N; i++ {
 		ci := NewKcpClientNetwork(GetConfig().LocalAddr, i)
 		ci.Start()
-		//ci.s.Write([]byte(fmt.Sprintf("i am ci:%d", i)))
 		msg := Message{ci.s.GetSeqID(), fmt.Sprintf("i am ci:%d", i)}
 		data, _ := json.Marshal(msg)
 		ci.s.Write(data)

@@ -7,16 +7,6 @@ import (
 	"time"
 )
 
-//func GetLongRandStr() []byte {
-//	var str []byte
-//	n := rand.Int() % 1000
-//	for i := 0; i < n; i++ {
-//		str = append(str, byte(rand.Int()%128))
-//	}
-//
-//	return str
-//}
-
 func TestKcp(t *testing.T) {
 	server.Start(GetConfig().LocalAddr)
 
@@ -27,7 +17,6 @@ func TestKcp(t *testing.T) {
 	for i := 0; i < N; i++ {
 		ci := NewKcpClientNetwork(GetConfig().LocalAddr, i)
 		ci.Start()
-		//ci.s.Write([]byte(fmt.Sprintf("i am ci:%d", i)))
 		go func() {
 			for n := 0; n < X; n++ {
 				msg := Message{ci.s.GetSeqID(), fmt.Sprintf("%s", GetLongRandStr())}

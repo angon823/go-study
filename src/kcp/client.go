@@ -23,6 +23,8 @@ func NewKcpClientNetwork(rAddr string, id int) *KcpClientNetwork {
 }
 
 func (this *KcpClientNetwork) Start() {
+	PrintCover()
+
 	conn, err := kcp.Dial(this.rAddr)
 	if err != nil {
 		log.Fatal(err, this.rAddr)
@@ -47,7 +49,11 @@ func (this *KcpClientNetwork) Start() {
 func (this *KcpClientNetwork) Loop() {
 	for {
 		select {
-		case data := <-this.s.RecvMsg:
+		case data, ok := <-this.s.RecvMsg:
+			if !ok {
+				log.Println("loop exit...")
+				break
+			}
 			msg := Message{}
 			err := json.Unmarshal(data, &msg)
 			if err != nil {

@@ -17,7 +17,7 @@ const (
 )
 
 type NetTask struct {
-	conn  net.Conn //for compatible tcp
+	conn  net.Conn //兼容 tcp
 	rAddr string
 
 	lastRecvTime int64
@@ -31,8 +31,7 @@ type NetTask struct {
 	RecvMsg  chan []byte
 
 	sequenceSeed int64
-
-	deBug string
+	deBug        string
 }
 
 func NewNetTask(conn net.Conn, keepAlive bool) *NetTask {
@@ -104,8 +103,9 @@ func (this *NetTask) recvLoop() {
 		// high time consuming
 		this.lastRecvTime = time.Now().Unix()
 
-		//copy(packBuff[0:], packBuff[4+packSize:]) //?it will be batter?
-		packBuff = packBuff[MessagePackSize+packSize:]
+		// todo: 优化成循环数组, 避免拷贝
+		copy(packBuff[0:], packBuff[MessagePackSize+packSize:])
+		//packBuff = packBuff[MessagePackSize+packSize:]
 		cur = cur - (MessagePackSize + packSize)
 
 		select {
@@ -159,7 +159,7 @@ func (this *NetTask) Write(data []byte) {
 }
 
 func (this *NetTask) onMessage(data []byte) {
-	//log.Printf("%s recv remote:%s, size:%d data:%s", this.deBug, this.conn.RemoteAddr().String(), len(data), data)
+	log.Printf("%s recv remote:%s, size:%d data:%s", this.deBug, this.conn.RemoteAddr().String(), len(data), data)
 	msg := Message{}
 	err := json.Unmarshal(data, &msg)
 	if err != nil {
@@ -167,7 +167,7 @@ func (this *NetTask) onMessage(data []byte) {
 		panic(err)
 	}
 
-	//distpach
+	//todo:dispatch
 	//select {
 	//case this.RecvMsg <- data:
 	//default:
@@ -179,6 +179,8 @@ func (this *NetTask) Close() {
 	log.Printf("client:%s close", this.rAddr)
 
 	close(this.die)
+	close(this.RecvMsg)
+	close(this.sendChan)
 
 	err := this.conn.Close()
 	if err != nil {
@@ -224,16 +226,13 @@ func setBuffer(sess *kcp.UDPSession) {
 	err := sess.SetReadBuffer(GetConfig().ReadBufferSize)
 	if err != nil {
 		log.Println("SetReadBuffer", err)
-		//return
 	}
 	err = sess.SetWriteBuffer(GetConfig().ReadBufferSize)
 	if err != nil {
 		log.Println("SetWriteBuffer", err)
-		return
 	}
 	err = sess.SetDeadline(time.Now().Add(time.Second * 2))
 	if err != nil {
 		log.Fatal("SetDeadline", err)
-		//return
 	}
 }

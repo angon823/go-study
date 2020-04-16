@@ -44,6 +44,8 @@ func (this *KcpServerNetwork) Get(rAddr string) *NetTask {
 }
 
 func (this *KcpServerNetwork) Start(localAddr string) net.Listener {
+	PrintCover()
+
 	listener, err := kcp.Listen(localAddr)
 	if err != nil {
 		log.Println(err)
@@ -64,6 +66,8 @@ func (this *KcpServerNetwork) Start(localAddr string) net.Listener {
 	kcpListener.SetReadDeadline(time.Now().Add(time.Millisecond * 50))
 
 	go func() {
+		defer PrintCover()
+
 		for {
 			conn, err := kcpListener.Accept()
 			if err != nil {
@@ -91,6 +95,7 @@ func (this *KcpServerNetwork) Start(localAddr string) net.Listener {
 }
 
 func (this *KcpServerNetwork) handleClient(sess *kcp.UDPSession) {
+
 	setMode(sess, GetConfig().Mode)
 	//setBuffer(sess)
 
