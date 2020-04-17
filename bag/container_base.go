@@ -17,25 +17,42 @@ const (
 type ItemChangeReason int
 
 //>> 道具描述信息
-type ItemDesc struct {
-	tid   int32
-	count uint64
+type ItemTidDesc struct {
+	TID   int32
+	Count uint64
 }
+
+type ItemUidDesc struct {
+	UID   uint64
+	Count uint64
+}
+
+const (
+	ErrSuccess = iota
+	ErrItemNotExist
+	ErrItemNotEnough
+	ErrContainerNotExist
+)
 
 type itemError struct {
 	Code   int    //>> 自定义错误码
 	Detail string //>> 描述
-	Param  []int  //>> 自定义错误参数，如道具数量不足错误，Param可以为[id,count]
+	Param  []int  //>> 自定义错误参数，如道具数量不足错误，Param可以为[id,Count]
 }
 
 func (this *itemError) Error() string {
 	return fmt.Sprintf("%d %s %v", this.Code, this.Detail, this.Param)
 }
 
+//func (this ItemError) Error() string {
+//	return fmt.Sprintf("%d %s %v", this.Code, this.Detail, this.Param)
+//}
+
 type ItemError *itemError
 
-func NewItemError(code int) ItemError {
-	err := itemError{Code: code}
+
+func NewItemError(code int) *itemError {
+	err := itemError{Code: code, Param: make([]int, 1)}
 	return &err
 }
 
@@ -54,7 +71,7 @@ type ContainerInterface interface {
 	//>> 根据uid返回道具
 	GetItemByUID(uid uint64) ItemInterface
 	//>> 根据模板id返回道具列表
-	GetItemByTID(tid int32) []ItemInterface
+	GetItemsByTID(tid int32) []ItemInterface
 	//>> 根据模板id返回一个“最佳删除”道具，可能优先绑定或快过期的
 	GetItemForReduce(tid int32) ItemInterface
 	//>> 获取道具数量
@@ -62,29 +79,29 @@ type ContainerInterface interface {
 	//>> 检查是否能加道具
 	TryAddItem(tid int32, count uint64) ItemError
 	//>> 检查是否能加道具
-	TryAddItems(items []ItemDesc) ItemError
-	//>> 增加道具，成功返回增加后的道具
-	AddItem(tid int32, count uint64, reason ItemChangeReason) ItemInterface
+	TryAddItems(items []ItemTidDesc) ItemError
+	//>> 增加道具，成功返回增加后的道具, 因为堆叠原因也可能有多个
+	AddItem(tid int32, count uint64, reason ItemChangeReason) ([]ItemInterface, ItemError)
 	//>> 批量加道具, 成功返回增加后的道具切片
-	AddItems(items []ItemDesc, reason ItemChangeReason) []ItemInterface
+	AddItems(items []ItemTidDesc, reason ItemChangeReason) ([]ItemInterface, ItemError)
 	//>> 检查是否能扣道具，成功返回nil
 	TryReduceItemByUID(uid, count uint64) ItemError
 	//>> 检查是否能扣道具，成功返回nil
 	TryReduceItemByTID(tid int32, count uint64) ItemError
 	//>> 检查是否能扣道具，成功返回nil
-	TryReduceItems([]ItemDesc) ItemError
+	TryReduceItems([]ItemTidDesc) ItemError
 	//>> 扣道具，成功返回nil
 	ReduceItemByUID(uid, count uint64, reason ItemChangeReason) ItemError
 	//>> 扣道具，成功返回nil
-	ReduceItem(tid int32, count uint64, reason ItemChangeReason) ItemError
+	ReduceItemByTID(tid int32, count uint64, reason ItemChangeReason) ItemError
 	//>> 扣道具，成功返回nil
-	ReduceItems(items []ItemDesc, reason ItemChangeReason) ItemError
+	ReduceItems(items []ItemTidDesc, reason ItemChangeReason) ItemError
 	//>> 扣并给道具，保证事务性
-	ReduceAndAddItems(delItems, giveItems []ItemDesc, reason ItemChangeReason) ItemError
+	ReduceAndAddItems(delItems, giveItems []ItemTidDesc, reason ItemChangeReason) ItemError
 	//>> 扣并给道具，保证事务性
-	ReduceAndAddItemByUID(delUIDs []uint64, giveItems []ItemDesc, reason ItemChangeReason) ItemError
+	ReduceAndAddItemByUID(delUIDs []ItemUidDesc, giveItems []ItemTidDesc, reason ItemChangeReason) ItemError
 	//>> todo: 异步扣道具，结果调用回调, 有些一级货币可能无法同步扣除
-	//AsyncReduceItem(items []ItemDesc, reason ItemChangeReason, cb func(err ItemError))
+	//AsyncReduceItem(items []ItemTidDesc, reason ItemChangeReason, cb func(err ItemError))
 	//>> todo: 移动位置
 	//MoveItem(uid uint64, targetPos int64) ItemError
 	//>> todo：交换位置
@@ -92,6 +109,21 @@ type ContainerInterface interface {
 	//>> todo: 如果有穿脱装备，会跨容器交换位置
 	//SwapOut()
 	//SwapIn()
+}
+
+// 道具更新类型
+type ItemUpdateType int8
+
+const (
+	KItemUpdateTypeAdd    ItemUpdateType = iota // 增加
+	KItemUpdateTypeDel                          // 删除
+	KItemUpdateTypeUpdate                       // 更新
+)
+
+// 道具操作更新
+type ItemOpRecord struct {
+	UID       uint64
+	Operation ItemUpdateType
 }
 
 type ContainerBase struct {
@@ -102,6 +134,9 @@ type ContainerBase struct {
 	maxLoad  int32
 	items    map[uint64]ItemInterface
 	tid2UIDs map[int32][]uint64
+
+	// 更新队列
+	updateQueue []ItemOpRecord
 }
 
 //>> 容器类型
@@ -131,13 +166,13 @@ func (this *ContainerBase) GetMaxLoad() int32 {
 
 //>> 根据uid返回道具
 func (this *ContainerBase) GetItemByUID(uid uint64) ItemInterface {
-	return  this.items[uid]
+	return this.items[uid]
 }
 
 //>> 根据模板id返回道具列表
-func (this *ContainerBase) GetItemByTID(tid int32) []ItemInterface {
+func (this *ContainerBase) GetItemsByTID(tid int32) []ItemInterface {
 	var ret []ItemInterface
-	if tids, ok := this.tid2UIDs[tid]; ok{
+	if tids, ok := this.tid2UIDs[tid]; ok {
 		for uid := range tids {
 			item, ok := this.items[uint64(uid)]
 			if ok {
@@ -150,7 +185,7 @@ func (this *ContainerBase) GetItemByTID(tid int32) []ItemInterface {
 
 //>> 根据模板id返回一个“最佳删除”道具，可能优先绑定或快过期的
 func (this *ContainerBase) GetItemForReduce(tid int32) ItemInterface {
-	items := this.GetItemByTID(tid)
+	items := this.GetItemsByTID(tid)
 	if len(items) > 0 {
 		// todo: 根据规则找出先扣除的
 		return items[0]
@@ -160,7 +195,7 @@ func (this *ContainerBase) GetItemForReduce(tid int32) ItemInterface {
 
 //>> 获取道具数量
 func (this *ContainerBase) GetItemCount(tid int32) uint64 {
-	items  := this.GetItemByTID(tid)
+	items := this.GetItemsByTID(tid)
 	count := uint64(0)
 	for _, item := range items {
 		count += item.GetCount()
@@ -170,17 +205,16 @@ func (this *ContainerBase) GetItemCount(tid int32) uint64 {
 
 //>> 检查是否能加道具
 func (this *ContainerBase) TryAddItem(tid int32, count uint64) ItemError {
-	//>> 计算堆叠
 	//>> 计算负重
 	//>> 计算格子
+	//>> 计算堆叠
 	return NewItemError(0)
 }
 
 //>> 检查是否能加道具
-func (this *ContainerBase) TryAddItems(items []ItemDesc) ItemError {
+func (this *ContainerBase) TryAddItems(items []ItemTidDesc) ItemError {
 	for _, item := range items {
-		if err := this.TryAddItem(item.tid, item.count); err != nil {
-			//>> todo 合并错误
+		if err := this.TryAddItem(item.TID, item.Count); err != nil {
 			return err
 		}
 	}
@@ -188,91 +222,309 @@ func (this *ContainerBase) TryAddItems(items []ItemDesc) ItemError {
 }
 
 //>> 增加道具，成功返回增加后的道具
-func (this *ContainerBase) AddItem(tid int32, count uint64, reason ItemChangeReason) ItemInterface {
-	if this.TryAddItem(tid, count) != nil {
-		return  nil
+func (this *ContainerBase) AddItem(tid int32, count uint64, reason ItemChangeReason) ([]ItemInterface, ItemError){
+	var items []ItemInterface
+
+	if err:=this.TryAddItem(tid, count);err != nil {
+		return items ,err
 	}
 
-	item := NewItem(tid)
-	if item == nil {
-		return nil
+	// todo: 计算堆叠
+	for n := 1; n > 0; n-- {
+
+		item := NewItem(tid, count)
+		if item == nil {
+			return nil, NewItemError(-1)
+		}
+
+		this.addItem(item, reason)
+		items = append(items, item)
 	}
 
-	this.addItem(item, reason)
-
-
-	return item
+	return items, nil
 }
 
 //>> 批量加道具, 成功返回增加后的道具切片
-func (this *ContainerBase) AddItems(items []ItemDesc, reason ItemChangeReason) []ItemInterface {
+func (this *ContainerBase) AddItems(items []ItemTidDesc, reason ItemChangeReason) ([]ItemInterface, ItemError) {
+	var ret []ItemInterface
+	if err:=this.TryAddItems(items);err != nil {
+		return ret, err
+	}
 
+	for _, itemDesc := range items {
+		// todo: 计算堆叠
+		total := uint64(0)
+		count := uint64(1)
+		for {
+			//maxOverlap := getItemMaxOverlap(itemDesc.TID)
+			//curOverlap
+			total += count
+			item := NewItem(itemDesc.TID, count)
+			if item == nil {
+				return []ItemInterface{}, NewItemError(-1)
+			}
+			ret = append(ret, item)
+			this.addItem(item, reason)
+
+			if total >= itemDesc.Count {
+				break
+			}
+		}
+	}
+
+	return ret, nil
 }
 
 //>> 检查是否能扣道具，成功返回nil
 func (this *ContainerBase) TryReduceItemByUID(uid, count uint64) ItemError {
+	item := this.GetItemByUID(uid)
+	if item == nil {
+		return NewItemError(ErrItemNotExist)
+	}
 
+	if item.GetCount() < count {
+		err := NewItemError(ErrItemNotEnough)
+		err.Param = append(err.Param, int(count-item.GetCount()))
+		return err
+	}
+
+	return nil
 }
 
 //>> 检查是否能扣道具，成功返回nil
 func (this *ContainerBase) TryReduceItemByTID(tid int32, count uint64) ItemError {
+	items := this.GetItemsByTID(tid)
+	if len(items) == 0 {
+		return NewItemError(ErrItemNotExist)
+	}
 
+	has := uint64(0)
+	for _, item := range items {
+		has += item.GetCount()
+		if count <= has {
+			return nil
+		}
+	}
+
+	err := NewItemError(ErrItemNotEnough)
+	err.Param = append(err.Param, int(count-has))
+	return err
 }
 
 //>> 检查是否能扣道具，成功返回nil
-func (this *ContainerBase) TryReduceItems([]ItemDesc) ItemError {
+func (this *ContainerBase) TryReduceItems(items []ItemTidDesc) ItemError {
+	itemMap := ItemTidDesc{}.convertToMap(items)
+	if itemMap == nil {
+		return nil
+	}
 
+	for k, v := range itemMap {
+		if err := this.TryReduceItemByTID(k, v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 //>> 扣道具，成功返回nil
 func (this *ContainerBase) ReduceItemByUID(uid, count uint64, reason ItemChangeReason) ItemError {
+	if err := this.TryReduceItemByUID(uid, count); err != nil {
+		return err
+	}
 
+	this.delItem(uid, count, reason)
+	return nil
 }
 
 //>> 扣道具，成功返回nil
-func (this *ContainerBase) ReduceItem(tid int32, count uint64, reason ItemChangeReason) ItemError {
+func (this *ContainerBase) ReduceItemByTID(tid int32, count uint64, reason ItemChangeReason) ItemError {
+	if err := this.TryReduceItemByTID(tid, count); err != nil {
+		return err
+	}
 
+	for {
+		item := this.GetItemForReduce(tid)
+		if item == nil {
+			panic("(this *ContainerBase) ReduceItemByTID()!")
+		}
+		if item.GetCount() > count {
+			this.delItem(item.GetUID(), count, reason)
+		} else {
+			this.delItem(item.GetUID(), item.GetCount(), reason)
+		}
+		count -= item.GetCount()
+		if count <= 0 {
+			break
+		}
+	}
+
+	return nil
 }
 
 //>> 扣道具，成功返回nil
-func (this *ContainerBase) ReduceItems(items []ItemDesc, reason ItemChangeReason) ItemError {
+func (this *ContainerBase) ReduceItems(items []ItemTidDesc, reason ItemChangeReason) ItemError {
+	if err := this.TryReduceItems(items); err != nil {
+		return nil
+	}
 
+	for _, v := range items {
+		tid := v.TID
+		count := v.Count
+		for {
+			item := this.GetItemForReduce(tid)
+			if item == nil {
+				panic("(this *ContainerBase) ReduceItemByTID()!")
+			}
+			if item.GetCount() > count {
+				this.delItem(item.GetUID(), count, reason)
+			} else {
+				this.delItem(item.GetUID(), item.GetCount(), reason)
+			}
+			count -= item.GetCount()
+			if count <= 0 {
+				break
+			}
+		}
+	}
+
+	return nil
 }
 
 //>> 扣并给道具，保证事务性
-func (this *ContainerBase) ReduceAndAddItems(delItems, giveItems []ItemDesc, reason ItemChangeReason) ItemError {
+func (this *ContainerBase) ReduceAndAddItems(delItems, giveItems []ItemTidDesc, reason ItemChangeReason) ItemError {
+	if err := this.TryAddItems(giveItems); err != nil {
+		return err
+	}
 
+	if err := this.ReduceItems(delItems, reason); err != nil {
+		return err
+	}
+
+	this.AddItems(giveItems, reason)
+	return nil
 }
 
 //>> 扣并给道具，保证事务性
-func (this *ContainerBase) ReduceAndAddItemByUID(delUIDs []uint64, giveItems []ItemDesc, reason ItemChangeReason) ItemError {
+func (this *ContainerBase) ReduceAndAddItemByUID(delItems []ItemUidDesc, giveItems []ItemTidDesc, reason ItemChangeReason) ItemError {
+	if err := this.TryAddItems(giveItems); err != nil {
+		return err
+	}
 
+	delItemMap := ItemUidDesc{}.convertToMap(delItems)
+	if delItemMap != nil {
+		for k, v := range delItemMap {
+			if err := this.TryReduceItemByUID(k, v); err != nil {
+				return err
+			}
+		}
+
+		for k, v := range delItemMap {
+			if err := this.ReduceItemByUID(k, v, reason); err != nil {
+				panic("this.ReduceItemByUID")
+			}
+		}
+	}
+
+	this.AddItems(giveItems, reason)
+	return nil
 }
 
-func (this *ContainerBase) addItem(item ItemInterface, reason ItemChangeReason) ItemError {
-	//todo
-	newGrid := int16(0)
+func (this *ContainerBase) addItem(item ItemInterface, reason ItemChangeReason) {
 
-	item.SetTID(tid)
-	item.SetCount(count)
-	item.SetType(getItemType(tid))
 	item.SetCreateTime(time.Now().Unix())
 	item.SetContainerType(this.GetType())
+
+	//todo
+	newGrid := int16(0)
 	item.SetPos(newGrid)
 
 	//todo: 绑定信息等
 	//item.SetFlag()
 
-	return  nil
+	this.items[item.GetUID()] = item
+
+	ii, ok := this.tid2UIDs[item.GetTID()]
+	if !ok {
+		ii = make([]uint64, 1)
+	}
+	ii = append(ii, item.GetUID())
+	this.tid2UIDs[item.GetTID()] = ii
+
+	this.updateQueue = append(this.updateQueue, ItemOpRecord{UID: item.GetUID(), Operation:KItemUpdateTypeAdd})
+}
+
+func (this *ContainerBase) delItem(uid, count uint64, reason ItemChangeReason) {
+	item := this.GetItemByUID(uid)
+	if item == nil {
+		panic("(this *ContainerBase) delItem")
+	}
+
+	left := item.GetCount() - count
+	if left > 0 {
+		item.SetCount(left)
+	} else if left == 0 {
+		uids := this.tid2UIDs[item.GetTID()]
+		if len(uids) == 0 {
+			panic("(this *ContainerBase) delItem len(uids) == 0")
+		} else if len(uids) == 1 {
+			delete(this.tid2UIDs, item.GetTID())
+		} else {
+			idx := 0
+			for i := 0; i < len(uids); i++ {
+				if uids[i] == uid {
+					idx = i
+					break
+				}
+			}
+			uids = append(uids[0:idx], uids[idx+1:]...)
+			this.tid2UIDs[item.GetTID()] = uids
+		}
+		delete(this.items, uid)
+	} else {
+		panic("(this *ContainerBase) delItem left < 0")
+	}
+
+
+	op := ItemOpRecord{UID: uid}
+	if left == 0{
+		op.Operation = KItemUpdateTypeDel
+	}else {
+		op.Operation = KItemUpdateTypeUpdate
+	}
+
+	this.updateQueue = append(this.updateQueue, op)
+}
+
+func (ItemUidDesc) convertToMap(items []ItemUidDesc) map[uint64]uint64 {
+	if len(items) == 0 {
+		return nil
+	}
+	itemMap := make(map[uint64]uint64, len(items))
+	for _, item := range items {
+		itemMap[item.UID] = itemMap[item.UID] + item.Count
+	}
+	return itemMap
+}
+
+func (ItemTidDesc) convertToMap(items []ItemTidDesc) map[int32]uint64 {
+	if len(items) == 0 {
+		return nil
+	}
+	itemMap := make(map[int32]uint64, len(items))
+	for _, item := range items {
+		itemMap[item.TID] = itemMap[item.TID] + item.Count
+	}
+	return itemMap
 }
 
 //>> 根据道具ID从配置表里找到道具类型
-func getItemType(tid int32) int16 {
+func getItemType(tid int32) int32 {
 	return 0
 }
 
 //>> 返回道具负重
-func getItemWeight(tid int32) int {
+func getItemWeight(tid int32) int32 {
 	return 0
 }
 
@@ -293,17 +545,12 @@ func getItemContainerType(tid int32) ContainerType {
 	return ContainerType(retTyp)
 }
 
-func NewItem(tid int32) ItemInterface{
+func NewItem(tid int32, count uint64) ItemInterface {
 	switch getItemType(tid) {
 	case 0:
 		// todo: uid
-		return &ItemBase{uid:0, tid: tid}
+		return &ItemBase{uid: 0, tid: tid, count: count}
 	default:
 	}
-	return  nil
-}
-
-//>> 背包组件
-type ItemComponent struct {
-	containers map[ContainerType]ContainerInterface
+	return nil
 }
