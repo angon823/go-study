@@ -9,7 +9,7 @@ type ItemInterface interface {
 	//>> UID
 	GetUID() uint64
 	//>> 数量
-	GetCount() uint64
+	GetCount() int64
 	//>> 创建时间
 	GetCreateTime() int64
 	//>> 在容器中所处位置
@@ -22,7 +22,7 @@ type ItemInterface interface {
 
 	SetTID(int32)
 	SetUID(uint64)
-	SetCount(uint64)
+	SetCount(int64)
 	SetCreateTime(int64)
 	SetPos(int16)
 	SetContainerType(ContainerType)
@@ -38,7 +38,7 @@ const (
 type ItemBase struct {
 	tid        int32
 	uid        uint64
-	count      uint64
+	count      int64
 	createTime int64
 
 	pos          int16
@@ -54,7 +54,7 @@ func (this *ItemBase) GetUID() uint64 {
 	panic("implement me")
 }
 
-func (this *ItemBase) GetCount() uint64 {
+func (this *ItemBase) GetCount() int64 {
 	panic("implement me")
 }
 
@@ -74,7 +74,7 @@ func (this *ItemBase) GetContainerType() ContainerType {
 	panic("implement me")
 }
 
-func (this* ItemBase) GetWeight() int32{
+func (this *ItemBase) GetWeight() int32 {
 	return getItemWeight(this.tid)
 }
 
@@ -90,7 +90,7 @@ func (this *ItemBase) SetUID(uint64) {
 	panic("implement me")
 }
 
-func (this *ItemBase) SetCount(uint64) {
+func (this *ItemBase) SetCount(int64) {
 	panic("implement me")
 }
 
@@ -113,5 +113,3 @@ func (this *ItemBase) SetContainerType(ContainerType) {
 func (this *ItemBase) SetFlag(int) {
 	panic("implement me")
 }
-
-
