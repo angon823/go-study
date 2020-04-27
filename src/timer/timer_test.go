@@ -56,7 +56,7 @@ func TestManager_SetTimer(t *testing.T) {
 		return true
 	}, 4)
 
-	SetTimer(256*1024+1, 1, func(i interface{}) bool {
+	uid := SetTimer(256*1024+1, 1, func(i interface{}) bool {
 		fmt.Println(i, currentMs())
 		return true
 	}, 4)
@@ -66,7 +66,7 @@ func TestManager_SetTimer(t *testing.T) {
 	//time.Sleep(5 * time.Second)
 
 	for {
-		//fmt.Println("left:", GetLeftTime(uid))
+		fmt.Println("left:", GetLeftTime(uid))
 		time.Sleep(5 * time.Second)
 		if rand.Int()%100 > 90 {
 			//mgr.KillTimer(uid)

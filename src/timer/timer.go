@@ -19,43 +19,6 @@ var (
 	wheelSize   = []int64{1 << wheelBits[0], 1 << wheelBits[1], 1 << wheelBits[2], 1 << wheelBits[3], 1 << wheelBits[4]}
 )
 
-// 轮子上的一格
-type timerCell struct {
-	timerUid     HTimer
-	count        uint32
-	interval     int64
-	nextDeadline int64
-
-	link listNode
-
-	args     interface{}
-	ch       chan interface{}
-	callback func(args interface{}) bool
-}
-
-func (this *timerCell) init() {
-	this.link.Value = this
-}
-
-// 一层轮子
-type timerWheel struct {
-	cellList []listNode // 切片+链表, 如果算出来在同一格,拉链处理
-	wheelID  uint32
-}
-
-// 定时器
-type Manager struct {
-	curScale   int64 //当前刻度
-	nextScale  int64 //真实时间指向的刻度
-	hashFinder []*timerCell
-	wheels     []*timerWheel
-
-	freeCellPool list.List
-
-	// todo: 线程安全  增加一个swap容器
-	eventQueue []*timerCell
-}
-
 // 自定义链表
 type listNode struct {
 	prev, next *listNode
@@ -89,6 +52,30 @@ func add(newNode, prev, next *listNode) {
 	}
 }
 
+// 轮子上的一格
+type timerCell struct {
+	timerUid     HTimer
+	count        uint32
+	interval     int64
+	nextDeadline int64
+
+	link listNode
+
+	args     interface{}
+	ch       chan interface{}
+	callback func(args interface{}) bool
+}
+
+func (this *timerCell) init() {
+	this.link.Value = this
+}
+
+// 一层轮子
+type timerWheel struct {
+	cellList []listNode // 切片+链表, 如果算出来在同一格,拉链处理
+	wheelID  uint32
+}
+
 func (this *timerWheel) insert(pos int, cell *timerCell) {
 	addListNode(&cell.link, &this.cellList[pos])
 }
@@ -102,6 +89,19 @@ func newTimerWheel(wheelID uint32) *timerWheel {
 		wheelID:  wheelID,
 	}
 	return v
+}
+
+// 定时器
+type Manager struct {
+	curScale   int64 //当前刻度
+	nextScale  int64 //真实时间指向的刻度
+	hashFinder []*timerCell
+	wheels     []*timerWheel
+
+	freeCellPool list.List
+
+	// todo: 线程安全  增加一个swap容器
+	eventQueue []*timerCell
 }
 
 var mgr *Manager
@@ -285,7 +285,7 @@ func (this *Manager) doInsert(cell *timerCell) {
 
 	// 最上层(wheelCount=5时是2^32ms约49天)也放不下，就放到最上层里，等转到最上层时再算一遍
 	i = wheelCount - 1
-	pos := (this.curScale>>wheelBitSum[i] + wheelSize[i] - 1) & int64(wheelBitSum[i]-1)
+	pos := ((this.curScale >> wheelBitSum[i]) + wheelSize[i] - 1) & (wheelSize[i] - 1)
 	this.wheels[i].insert(int(pos), cell)
 }
 
@@ -349,12 +349,6 @@ func (this *Manager) loop() {
 				e := it.Value.(*timerCell)
 
 				delListNode(it)
-
-				// 回收
-				//if e.count == 0 {
-				//	this.recycleCell(e)
-				//	continue
-				//}
 
 				if !e.callback(e.args) || e.count <= 1 {
 					this.recycleCell(e)
