@@ -9,13 +9,13 @@ import (
 type HTimer uint64
 
 const (
-	wheelCount    = 5
+	wheelCount    = 5 // 轮子层级
 	InvalidHTimer = 0
 )
 
 var (
 	wheelBits   = []uint{10, 8, 8, 6, 0}
-	wheelBitSum = []uint{0, 10, 18, 24, 32, 32}
+	wheelBitSum = []uint{0, 10, 18, 24, 32}
 	wheelSize   = []int64{1 << wheelBits[0], 1 << wheelBits[1], 1 << wheelBits[2], 1 << wheelBits[3], 1 << wheelBits[4]}
 )
 
@@ -26,50 +26,96 @@ type timerCell struct {
 	interval     int64
 	nextDeadline int64
 
-	link list.Element
+	link listNode
 
 	args     interface{}
 	ch       chan interface{}
 	callback func(args interface{}) bool
 }
 
+func (this *timerCell) init() {
+	this.link.Value = this
+}
+
 // 一层轮子
 type timerWheel struct {
-	cellList []list.List // 切片+链表, 如果算出来在同一格,拉链处理
+	cellList []listNode // 切片+链表, 如果算出来在同一格,拉链处理
 	wheelID  uint32
 }
 
+// 定时器
 type Manager struct {
-	nowTime        int64
-	curTime        int64
-	lastUpdateTime int64
-	hashFinder     []*timerCell
-	wheels         []*timerWheel
-	freeCellPool   list.List
+	curScale   int64 //当前刻度
+	nextScale  int64 //真实时间指向的刻度
+	hashFinder []*timerCell
+	wheels     []*timerWheel
+
+	freeCellPool list.List
+
+	// todo: 线程安全  增加一个swap容器
+	eventQueue []*timerCell
+}
+
+// 自定义链表
+type listNode struct {
+	prev, next *listNode
+	Value      interface{}
+}
+
+func addListNode(newNode, head *listNode) {
+	add(newNode, head, head.next)
+}
+
+func delListNode(node *listNode) {
+	if node.next != nil {
+		node.next.prev = node.prev
+	}
+
+	if node.prev != nil {
+		node.prev.next = node.next
+	}
+	node.next = nil
+	node.prev = nil
+}
+
+func add(newNode, prev, next *listNode) {
+	if next != nil {
+		next.prev = newNode
+	}
+	newNode.next = next
+	newNode.prev = prev
+	if prev != nil {
+		prev.next = newNode
+	}
 }
 
 func (this *timerWheel) insert(pos int, cell *timerCell) {
-	head := this.cellList[pos]
-	head.PushBack(cell /*.link*/)
+	addListNode(&cell.link, &this.cellList[pos])
 }
 
 func newTimerWheel(wheelID uint32) *timerWheel {
 	if wheelID >= wheelCount {
 		return nil
 	}
-
 	v := &timerWheel{
-		cellList: make([]list.List, wheelSize[wheelID]),
+		cellList: make([]listNode, wheelSize[wheelID]),
 		wheelID:  wheelID,
 	}
 	return v
 }
 
-func NewManager() *Manager {
+var mgr *Manager
+
+func init() {
+	mgr = newManager()
+	mgr.start()
+}
+
+func newManager() *Manager {
 	mgr := &Manager{
-		nowTime:    0,
-		curTime:    0,
-		hashFinder: make([]*timerCell, 1024),
+		curScale:   0,
+		nextScale:  0,
+		hashFinder: make([]*timerCell, 0),
 		wheels:     make([]*timerWheel, wheelCount),
 	}
 
@@ -85,12 +131,32 @@ func NewManager() *Manager {
 	return mgr
 }
 
-func (this *Manager) Start() {
+func (this *Manager) start() {
 	go this.loop()
 }
 
-func (this *Manager) SetTimer(delay int64, count uint32, callback func(interface{}) bool, args interface{}) HTimer {
-	if delay <= 0 {
+// 添加定时器
+// interval 定时间隔(ms)
+// count	触发次数(-1为永远触发)
+// callback 回调
+// args		回调参数
+// return   定时器句柄
+func SetTimer(interval int64, count uint32, callback func(interface{}) bool, args interface{}) HTimer {
+	return mgr.setTimer(interval, count, callback, args)
+}
+
+// 停止定时器，传入SetTimer返回的句柄
+func KillTimer(uid HTimer) {
+	mgr.killTimer(uid)
+}
+
+// 获取定时器剩余时长，传入SetTimer返回的句柄
+func GetLeftTime(uid HTimer) int64 {
+	return mgr.getLeftTime(uid)
+}
+
+func (this *Manager) setTimer(interval int64, count uint32, callback func(interface{}) bool, args interface{}) HTimer {
+	if interval <= 0 {
 		callback(args)
 		return InvalidHTimer
 	}
@@ -101,34 +167,78 @@ func (this *Manager) SetTimer(delay int64, count uint32, callback func(interface
 	}
 
 	cell.count = count
-	cell.interval = delay
+	cell.interval = interval
 	cell.callback = callback
 	cell.args = args
-	cell.nextDeadline = cell.interval + this.nowTime
+	cell.nextDeadline = cell.interval + this.curScale
 
 	this.insertAtLeastOneFrame(cell)
 
 	return cell.timerUid
 }
 
-func (this *Manager) getFreeCell() *timerCell {
-	if this.freeCellPool.Len() > 0 {
-		e := this.freeCellPool.Remove(this.freeCellPool.Front())
-		if ret, ok := e.(*timerCell); !ok {
-			return nil
-		} else {
-			ret.timerUid = ((ret.timerUid>>32)+1)<<32 | (ret.timerUid & math.MaxUint32)
-			return ret
-		}
-	} else {
-		ret := &timerCell{}
-		ret.timerUid = HTimer(uint64(1)<<32 | uint64(len(this.hashFinder)-1))
-		this.hashFinder = append(this.hashFinder, ret)
-		return ret
+func (this *Manager) killTimer(uid HTimer) {
+	cell := this.findTimerCell(uid)
+	if cell == nil {
+		return
+	}
+
+	cell.count = 0
+	if cell.link.next != nil || cell.link.prev != nil { // 防止重复回收
+		delListNode(&cell.link)
+		this.recycleCell(cell)
 	}
 }
 
+func (this *Manager) getLeftTime(uid HTimer) int64 {
+	cell := this.findTimerCell(uid)
+	if cell == nil || cell.callback == nil {
+		return 0
+	}
+
+	leftTime := int64(0)
+	if cell.count > 1 {
+		leftTime = cell.interval * int64(cell.count-1)
+	}
+
+	if cell.nextDeadline > this.curScale {
+		leftTime += cell.nextDeadline - this.curScale
+	}
+
+	return leftTime
+}
+
+func (this *Manager) getFreeCell() *timerCell {
+	var ret *timerCell = nil
+	if this.freeCellPool.Len() > 0 {
+		e := this.freeCellPool.Remove(this.freeCellPool.Front())
+		ret = e.(*timerCell)
+		/*	uid    = self-increasing-num | finder slice index
+			64bit  = ------32bit---------| -----32bit-------
+
+			被复用了的ID前32位自增1	*/
+		ret.timerUid = ((ret.timerUid>>32)+1)<<32 | (ret.timerUid & math.MaxUint32)
+	} else {
+		ret = &timerCell{}
+		this.hashFinder = append(this.hashFinder, ret)
+		ret.timerUid = HTimer(uint64(1)<<32 | uint64(len(this.hashFinder)-1))
+	}
+
+	if ret != nil {
+		ret.init()
+	}
+	return ret
+}
+
 func (this *Manager) recycleCell(cell *timerCell) {
+	if cell.count <= 0 { //防止重复回收
+		return
+	}
+
+	cell.args = nil
+	cell.callback = nil
+	cell.count = 0
+	cell.nextDeadline = 0
 	this.freeCellPool.PushBack(cell)
 }
 
@@ -146,30 +256,36 @@ func (this *Manager) findTimerCell(uid HTimer) *timerCell {
 }
 
 func (this *Manager) insertAtLeastOneFrame(cell *timerCell) {
-	if cell.nextDeadline < this.curTime {
-		cell.nextDeadline = this.curTime
+	// 防止插入粒度太细被漏掉
+	if cell.nextDeadline < this.nextScale {
+		cell.nextDeadline = this.nextScale
 	}
 
-	this.insert(cell)
+	this.doInsert(cell)
 }
 
-func (this *Manager) insert(cell *timerCell) {
-	delay := cell.nextDeadline - this.nowTime
+func (this *Manager) doInsert(cell *timerCell) {
+	delay := cell.nextDeadline - this.curScale
 
 	i := uint32(0)
 
 	for ; i < wheelCount; i++ {
-		// 找到合适的轮子
+		/* 找到合适的轮子
+		delay / (粒度)2^n < wheelSize
+		wheelBitSum： 0, 10, 18, 24, 32
+		wheelSize： 1024(1ms), 256(2^10ms), 256(2^18ms), 64(2^24ms), 1(2^32ms)
+		*/
 		if delay>>wheelBitSum[i] < wheelSize[i] {
 			pos := (cell.nextDeadline >> wheelBitSum[i]) & (wheelSize[i] - 1)
+			//fmt.Println(i, pos)
 			this.wheels[i].insert(int(pos), cell)
 			return
 		}
 	}
 
-	// 放到最大的轮子里， wheelCount=5 2^32ms约49天
+	// 最上层(wheelCount=5时是2^32ms约49天)也放不下，就放到最上层里，等转到最上层时再算一遍
 	i = wheelCount - 1
-	pos := (this.nowTime>>wheelBitSum[i] + wheelSize[i] - 1) & int64(wheelBitSum[i]-1)
+	pos := (this.curScale>>wheelBitSum[i] + wheelSize[i] - 1) & int64(wheelBitSum[i]-1)
 	this.wheels[i].insert(int(pos), cell)
 }
 
@@ -178,22 +294,19 @@ func (this *Manager) updateWheel(wheelID uint32) {
 		return
 	}
 
-	index := (this.nowTime >> wheelBitSum[wheelID]) & (wheelSize[wheelID] - 1)
-	if int(index) >= len(this.wheels[wheelID].cellList) {
-		return
+	// 走到这一格了
+	index := (this.curScale >> wheelBitSum[wheelID]) & (wheelSize[wheelID] - 1)
+	for {
+		it := this.wheels[wheelID].cellList[index].next
+		if it == nil {
+			break
+		}
+		//移动到下一层
+		delListNode(it)
+		this.doInsert(it.Value.(*timerCell))
 	}
 
-	// 走到这一格了，重新插入一次
-	cells := this.wheels[wheelID].cellList[index]
-	cur := cells.Front()
-	for cur != nil {
-		cell := cur
-		cur = cur.Next()
-		cells.Remove(cell)
-		this.insert(cell.Value.(*timerCell))
-	}
-
-	// 本层的轮子刚好走完走完一轮，上一层转动一格
+	// 本层的轮子刚好走完一轮，上一层转动一格
 	if index == 0 {
 		this.updateWheel(wheelID + 1)
 	}
@@ -203,41 +316,58 @@ func currentMs() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
+var lastUpdateTime = currentMs()
+
+func getDeltaMs() int64 {
+	now := currentMs()
+	delta := now - lastUpdateTime
+	lastUpdateTime = now
+	return delta
+}
+
 func (this *Manager) loop() {
 	for {
-		now := currentMs()
-		this.curTime += this.nowTime + (now - this.lastUpdateTime)
-		this.lastUpdateTime = now
+		this.nextScale = this.curScale + getDeltaMs()
+		//fmt.Println(this.curScale, this.nextScale)
 
-		for this.nowTime < this.curTime {
-			scale := this.nowTime & (wheelSize[0] - 1)
+		//>> 最大轮子往前滚动
+		for this.curScale < this.nextScale {
+			// x & ( 2^n - 1) == x % 2^n
+			scale := this.curScale & (wheelSize[0] - 1)
 			if scale == 0 {
 				// 最大轮子走了1024个刻度
 				this.updateWheel(1)
 			}
 
 			// 走这个刻度了
-			cells := this.wheels[0].cellList[scale]
-			cur := cells.Front()
-			for cur != nil {
-				cell := cur
-				cur = cur.Next()
-				cells.Remove(cell)
-
+			for {
+				it := this.wheels[0].cellList[scale].next
+				if it == nil {
+					break
+				}
 				// 回调
-				e := cell.Value.(*timerCell)
-				if e.callback(e.args) || e.count <= 1 {
+				e := it.Value.(*timerCell)
+
+				delListNode(it)
+
+				// 回收
+				//if e.count == 0 {
+				//	this.recycleCell(e)
+				//	continue
+				//}
+
+				if !e.callback(e.args) || e.count <= 1 {
 					this.recycleCell(e)
 					continue
 				}
 
 				// 再次插入
 				e.count--
-				e.nextDeadline = this.nowTime + e.interval
+				e.nextDeadline = this.curScale + e.interval
 				this.insertAtLeastOneFrame(e)
 			}
-			this.nowTime++
+			this.curScale++
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 }
