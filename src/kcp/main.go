@@ -3,9 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
-	"runtime"
 	"time"
 )
 
@@ -43,20 +41,6 @@ func GetLongRandStr() []byte {
 	}
 
 	return str
-}
-
-func PrintCover() {
-	if x := recover(); x != nil {
-		log.Println(x)
-		i := 0
-		funcName, file, line, ok := runtime.Caller(i)
-		for ok {
-			log.Printf("frame %v:[func:%v,file:%v,line:%v]\n", i, runtime.FuncForPC(funcName).Name(), file, line)
-			i++
-			funcName, file, line, ok = runtime.Caller(i)
-		}
-
-	}
 }
 
 func main() {

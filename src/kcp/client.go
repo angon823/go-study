@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/xtaci/kcp-go"
 	"log"
+	"util"
 )
 
 type KcpClientNetwork struct {
@@ -23,7 +24,7 @@ func NewKcpClientNetwork(rAddr string, id int) *KcpClientNetwork {
 }
 
 func (this *KcpClientNetwork) Start() {
-	PrintCover()
+	defer util.PrintCover()
 
 	conn, err := kcp.Dial(this.rAddr)
 	if err != nil {

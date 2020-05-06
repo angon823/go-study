@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"math"
 	"time"
+	"util"
 )
 
 type HTimer uint64
@@ -326,6 +327,8 @@ func getDeltaMs() int64 {
 }
 
 func (this *Manager) loop() {
+	util.PrintCover()
+
 	for {
 		this.nextScale = this.curScale + getDeltaMs()
 		//fmt.Println(this.curScale, this.nextScale)

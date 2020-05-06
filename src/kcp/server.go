@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"util"
 )
 
 type KcpServerNetwork struct {
@@ -44,7 +45,7 @@ func (this *KcpServerNetwork) Get(rAddr string) *NetTask {
 }
 
 func (this *KcpServerNetwork) Start(localAddr string) net.Listener {
-	PrintCover()
+	defer util.PrintCover()
 
 	listener, err := kcp.Listen(localAddr)
 	if err != nil {
@@ -66,7 +67,7 @@ func (this *KcpServerNetwork) Start(localAddr string) net.Listener {
 	kcpListener.SetReadDeadline(time.Now().Add(time.Millisecond * 50))
 
 	go func() {
-		defer PrintCover()
+		defer util.PrintCover()
 
 		for {
 			conn, err := kcpListener.Accept()
