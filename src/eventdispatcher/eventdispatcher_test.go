@@ -1,142 +1,71 @@
-package main
+package eventdispatcher
 
 import (
 	"fmt"
 	"testing"
+	"time"
 	"unsafe"
 )
-
-type T struct {
-	str string
-	x   int32
-}
 
 type E struct {
 	x int32
 }
 
-func (t *T) f(arg ...interface{}) {
+type TT struct {
+	str string
+	x   int
+}
 
-	//fmt.Println("this is T.f.....", arg)
+func (t *TT) f(arg interface{}) {
 
-	for _, v := range arg {
-		t.x = v.(int32)
-	}
+	t.x = arg.(int)
 
 	fmt.Println("this is T.f.....", t.x)
 
-	dispactcher.DispatchEventNoDelay(EventEnumNone, int32(2))
-
+	// callback中再添加不保证会调用到
 	dispactcher.AddListener(EventEnumNone, 1, t.a)
-
 }
 
-func (t *T) a(arg ...interface{}) {
+func (t *TT) a(arg interface{}) {
 	fmt.Println("this is T.a.....", arg)
+	fmt.Println(time.Now().Unix())
 }
 
-func (*E) f(arg ...interface{}) {
+func (*E) f(arg interface{}) {
 	fmt.Println("this is E.f.....", arg)
 }
 
-var dispactcher = EventDispatcher{}
-
-var t = T{}
-
-func addt() {
-	dispactcher.AddListener(EventEnumNone, uintptr(unsafe.Pointer(&t)), t.f)
-	//wp.Done()
-	fmt.Println("addt t success")
-
-	ch <- 1
-}
-
+var t = TT{}
 var e = E{}
-
-func adde() {
-	dispactcher.AddListener(EventEnumNone, uintptr(unsafe.Pointer(&e)), e.f)
-	//wp.Done()
-	fmt.Println("adde e success")
-
-	ch <- 4
-}
-
-func removet() {
-	dispactcher.RemoveListener(EventEnumNone, uintptr(unsafe.Pointer(&t)))
-	fmt.Println("remove t success")
-	//wp.Done()
-	ch <- 3
-}
-
-func dispatch(i int32) {
-	dispactcher.DispatchEventNoDelay(EventEnumNone, int32(i))
-	fmt.Println("dispatch success")
-	//wp.Done()
-	ch <- 2
-}
-
-var ch = make(chan int, 4)
 
 func handler(key, value interface{}) bool {
 	fmt.Printf("Name :%v, %v\n", key, value)
 	return true
 }
 
+var dispactcher = NewEventDispatcher()
 
-func TestEventDispatcher_DispatcherEvent(t *testing.T) {
-	//for i := 0; i < v.Elem().NumField(); i++ {
-	//	v := v.Elem().Field(i)
-	//	Log.Warning("############ %s", v.Type())
-	//}
+func TestEventDispatcher_DispatcherEvent(tt *testing.T) {
 
-	//testMap()
+	dispactcher.StartLoop()
 
-	//t := T{}
-	//e := E{}
-	//t.x = 10
+	dispactcher.AddStaticListener(EventEnumNone, e.f)
+	dispactcher.AddStaticListener(EventEnumNone, e.f)
 
-	//wp.Add(4)
-	//go addt()
-	//go adde()
-	//
-	//time.Sleep(1)
-	//dispactcher.Update()
-	//go dispatch(2)
-	//go dispatch(1)
-	//
-	////time.Sleep(10* time.Millisecond)
-	//
-	//dispactcher.events.Range(handler)
-	//
-	//go removet()
-	//
-	////time.Sleep(1* time.Second)
-	//
-	////close(ch)
-	//
-	//for i:=0; i<4;i++ {
-	//	<- ch
-	//}
+	dispactcher.AddListener(EventEnumNone, uintptr(unsafe.Pointer(&t)), t.f)
 
-	//dispactcher.DispatchEventNoDelay(EventEnumNone, int32(3))
+	dispactcher.DispatchEventNoDelay(EventEnumNone, 1)
 
-	dispactcher.events.Range(handler)
+	dispactcher.RemoveListener(EventEnumNone, uintptr(unsafe.Pointer(&t)))
+
+	dispactcher.DispatchEvent(EventEnumNone, 2)
+
+	dispactcher.DispatchEventAfter(EventEnumNone, 3, 2*time.Second)
+
+	time.Sleep(5 * time.Second)
+
+	dispactcher.Stop()
 
 	fmt.Println("main over..")
-	//time.Sleep(10* time.Second)
 
-	//wp.Wait()
-	//dispactcher.AddListener(EventEnumNone, uintptr(unsafe.Pointer(&t)), t.f)
-	//dispactcher.AddListener(EventEnumNone, uintptr(unsafe.Pointer(&e)), e.f)
-
-	//dispactcher.DispatchEventNoDelay(EventEnumNone, int32(2))
-
-	//fmt.Println("t.x: ", t.x)
-
-	//dispactcher.RemoveListener(EventEnumNone,  uintptr(unsafe.Pointer(&t)))
-	//dispactcher.RemoveListener(EventEnumNone,  1, f)
-
-	//dispactcher.DispatchEventNoDelay(EventEnumNone, 3)
-
-	//dispactcher.events.Range(handler)
 }

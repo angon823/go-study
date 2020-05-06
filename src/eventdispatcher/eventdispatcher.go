@@ -1,148 +1,248 @@
-//package eventdispatcher
-package main
+package eventdispatcher
 
+/*
+事件系统：
+	1.线程安全
+	2.支持同步, 异步事件
+	3.支持动态订阅和解绑
+可选:
+	4.StartLoop后会自驱动Update, 默认每帧定义为50ms, 异步callback会在另外一个线程中被调用,
+	如果想异步callback在自己的线程调用自己驱动Update即可
+*/
 import (
 	"fmt"
+	"reflect"
+	"runtime"
 	"sync"
+	"time"
+	"timer"
+	"util"
 )
-
-type eventEntry struct {
-	Callback func(...interface{})
-}
-
-type eventMidEntry struct {
-	typ      EventType
-	obj      uintptr
-	Callback func(...interface{})
-}
 
 type EventType int
 
+func (typ EventType) isValid() bool {
+	return typ < EventEnumCount && typ >= EventEnumNone
+}
+
 const (
 	EventEnumNone EventType = iota
+
+	EventEnumCount
 )
 
-type Event struct {
-	eventEnum EventType
-	args      []interface{}
+type EventCallback func(interface{})
+
+type eventEntry struct {
+	callback EventCallback
+}
+
+// 事件
+type event struct {
+	typ EventType
+
+	// 不同事件参数不一样
+	args interface{}
+}
+
+type eventEntryC struct {
+	evt  []*eventEntry
+	lock sync.RWMutex
 }
 
 type EventDispatcher struct {
-	events sync.Map // map<typ, map<obj, callback>>
+	// 动态监听
+	events [EventEnumCount]*sync.Map // []<typ, map<obj, eventEntry>>
 
-	nextFrameEvents []*Event
+	// 静态监听
+	staticEvents [EventEnumCount]*eventEntryC
+	staticLock   sync.Mutex
+
+	// 处理下一帧触发
+	nextFrameEvents []*event
 	frameLock       sync.Mutex
 
-	unActiveEntry []*eventMidEntry
-	activeLock    sync.Mutex
+	die      chan bool
+	selfLoop bool
 }
 
 func NewEventDispatcher() *EventDispatcher {
-	return &EventDispatcher{
-		nextFrameEvents: make([]*Event, 0),
-		unActiveEntry:   make([]*eventMidEntry, 0),
+	c := &EventDispatcher{
+		nextFrameEvents: make([]*event, 0),
+		die:             make(chan bool),
 	}
+
+	// 唯一写, 预先分配好内存
+	for i := 0; i < int(EventEnumCount); i++ {
+		c.events[i] = new(sync.Map)
+	}
+
+	return c
 }
 
-func (this *EventDispatcher) Update() {
-	//>> 激活
-	this.activeNow()
-
-	var curFrameEvents []*Event
-
-	this.frameLock.Lock()
-	curFrameEvents, this.nextFrameEvents = this.nextFrameEvents, curFrameEvents
-	this.frameLock.Unlock()
-
-	for i := 0; i < len(curFrameEvents); i++ {
-		this.doDispatch(curFrameEvents[i].eventEnum, curFrameEvents[i].args...)
-	}
-}
-
-func (this *EventDispatcher) activeNow() {
-
-	this.activeLock.Lock()
-	if len(this.unActiveEntry) == 0 {
-		this.activeLock.Unlock()
-		return
+// 自驱动Update callback会在另外一个线程中被调用
+// 如果想callback在指定线程被调用，在对应线程中驱动Update
+func (this *EventDispatcher) StartLoop() {
+	dispatcher := this
+	if dispatcher == nil {
+		dispatcher = NewEventDispatcher()
 	}
 
-	var curEntrys []*eventMidEntry
-	curEntrys, this.unActiveEntry = this.unActiveEntry, curEntrys
-	this.activeLock.Unlock()
+	go func() {
+		defer util.PrintCover()
 
-	for i := 0; i < len(curEntrys); i++ {
-		cellist, _ := this.events.LoadOrStore(curEntrys[i].typ, &sync.Map{})
-		if objMap, ok := cellist.(*sync.Map); ok {
-			_, exist := objMap.Load(curEntrys[i].obj)
-			if exist {
-				fmt.Printf("obj:%v has already listen event:%d\n", curEntrys[i].obj, curEntrys[i].typ)
+		for {
+			select {
+			case <-dispatcher.die:
+				break
+			default:
 			}
 
-			newEntry := &eventEntry{curEntrys[i].Callback}
-			objMap.Store(curEntrys[i].obj, newEntry)
-			this.events.Store(curEntrys[i].typ, objMap)
+			dispatcher.Update()
+
+			// 每秒20帧
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+
+	dispatcher.selfLoop = true
+}
+
+// 停止
+func (this *EventDispatcher) Stop() {
+	if this.selfLoop {
+		select {
+		case this.die <- true:
+		default:
 		}
 	}
 }
 
-// 因为map的遍历一定是随机的，所以在callback中再对这个事件监听无法保证一定会在当帧调用到
-// 不如规定当帧加入的监听至少要过一帧才生效
-func (this *EventDispatcher) AddListener(eventEnum EventType, obj uintptr, cb func(...interface{}) /*, immediately bool*/) bool {
-	//cellist, _ := this.events.LoadOrStore(eventEnum, &sync.Map{})
-	//if objMap, ok := cellist.(*sync.Map); ok {
-	//	_, exist := objMap.Load(obj)
-	//	if exist {
-	//		fmt.Printf("obj:%v has already listen event:%d\n", obj, eventEnum)
-	//	}
-	//	newEntry := &eventEntry{cb}
-	//
-	//	objMap.Store(obj, newEntry)
-	//	this.events.Store(eventEnum, objMap)
-	//	return true
-	//}
-	newEntry := &eventMidEntry{eventEnum, obj, cb}
-	this.unActiveEntry = append(this.unActiveEntry, newEntry)
-	return false
+// 添加静态函数监听，不可取消监听，一个函数（包括类的成员方法）只能监听一次某事件
+func (this *EventDispatcher) AddStaticListener(typ EventType, callback EventCallback) bool {
+	if !typ.isValid() || callback == nil {
+		return false
+	}
+
+	// check init
+	if this.staticEvents[typ] == nil {
+		this.staticLock.Lock()
+		if this.staticEvents[typ] == nil { // double check
+			this.staticEvents[typ] = &eventEntryC{evt: make([]*eventEntry, 0)}
+		}
+		this.staticLock.Unlock()
+	}
+
+	staticEvents := this.staticEvents[typ]
+
+	// check exist
+	staticEvents.lock.RLock()
+	for _, entry := range staticEvents.evt {
+		if reflect.ValueOf(entry.callback).Pointer() == reflect.ValueOf(callback).Pointer() {
+			fmt.Printf("func:%v has already listen on type:%v\n", runtime.FuncForPC(reflect.ValueOf(callback).Pointer()).Name(), typ)
+			staticEvents.lock.RUnlock()
+			return false
+		}
+	}
+	staticEvents.lock.RUnlock()
+
+	// add listen
+	staticEvents.lock.Lock()
+	newEntry := &eventEntry{callback}
+	staticEvents.evt = append(staticEvents.evt, newEntry)
+	staticEvents.lock.Unlock()
+
+	return true
 }
 
-func (this *EventDispatcher) DispatchEventNoDelay(eventEnum EventType, args ...interface{}) {
-	this.doDispatch(eventEnum, args)
+// 添加动态监听, callback是obj对象的成员方法, 必须与RemoveListener一一对应
+// 如果callback不是成员方法, 大部分情况下应该使用AddStaticListener
+// 如果确实要remove监听但callback又不是成员方法，obj应该指定为与callback一一对应的的对象
+func (this *EventDispatcher) AddListener(typ EventType, obj uintptr, callback EventCallback) bool {
+	if !typ.isValid() || callback == nil {
+		return false
+	}
+
+	objMap := this.events[typ]
+	_, exist := objMap.Load(obj)
+	if exist {
+		fmt.Printf("obj:%v has already listen event:%d\n", obj, typ)
+	}
+
+	newEntry := &eventEntry{callback}
+
+	objMap.Store(obj, newEntry)
+	return true
 }
 
-func (this *EventDispatcher) DispatchEvent(eventEnum EventType, args ...interface{}) {
+// 移除监听
+func (this *EventDispatcher) RemoveListener(typ EventType, obj uintptr) {
+	if !typ.isValid() {
+		return
+	}
 
+	this.events[typ].Delete(obj)
+}
+
+// 抛出同步事件, 同步调用
+func (this *EventDispatcher) DispatchEventNoDelay(typ EventType, args interface{}) {
+	this.doDispatch(typ, args)
+}
+
+// 抛出异步事件, 下一帧触发
+func (this *EventDispatcher) DispatchEvent(typ EventType, args interface{}) {
 	this.frameLock.Lock()
 	defer this.frameLock.Unlock()
 
-	this.nextFrameEvents = append(this.nextFrameEvents, &Event{eventEnum, args})
+	this.nextFrameEvents = append(this.nextFrameEvents, &event{typ, args})
 }
 
-func (this *EventDispatcher) doDispatch(eventEnum EventType, args ...interface{}) {
-	cellist, ok := this.events.Load(eventEnum)
-	if !ok {
+// delay时间之后抛出
+func (this *EventDispatcher) DispatchEventAfter(typ EventType, args interface{}, delay time.Duration) {
+	after := func(interface{}) bool {
+		this.doDispatch(typ, args)
+		return false
+	}
+
+	timer.SetTimer(int64(delay.Seconds()*1000), 1, after, nil)
+}
+
+func (this *EventDispatcher) Update() {
+	this.frameLock.Lock()
+	if len(this.nextFrameEvents) == 0 {
+		this.frameLock.Unlock()
+		return
+	}
+	curFrameEvents := make([]*event, 0)
+	curFrameEvents, this.nextFrameEvents = this.nextFrameEvents, curFrameEvents
+	this.frameLock.Unlock()
+
+	for i := 0; i < len(curFrameEvents); i++ {
+		this.doDispatch(curFrameEvents[i].typ, curFrameEvents[i].args)
+	}
+}
+
+func (this *EventDispatcher) doDispatch(typ EventType, args interface{}) {
+	if !typ.isValid() {
 		return
 	}
 
-	//>> todo 在callback时add或remove或dispatch
-	if objMap, ok := cellist.(*sync.Map); ok {
-		objMap.Range(func(_, value interface{}) bool {
-			if entry, err := value.(*eventEntry); err && entry != nil {
-				entry.Callback(args...)
-				return true
-			}
-			return false
-		})
-	}
-}
+	// 动态监听
+	objMap := this.events[typ]
+	objMap.Range(func(_, value interface{}) bool {
+		if entry := value.(*eventEntry); entry != nil && entry.callback != nil {
+			(entry.callback)(args)
+			return true
+		}
+		return false
+	})
 
-func (this *EventDispatcher) RemoveListener(eventEnum EventType, obj uintptr) {
-	cellist, ok := this.events.Load(eventEnum)
-	if !ok {
-		return
-	}
-
-	if objMap, ok := cellist.(*sync.Map); ok {
-		objMap.Delete(obj)
+	// 静态监听
+	if this.staticEvents[typ] != nil {
+		this.staticEvents[typ].lock.RLock()
+		for _, entry := range this.staticEvents[typ].evt {
+			(entry.callback)(args)
+		}
+		this.staticEvents[typ].lock.RUnlock()
 	}
 }
