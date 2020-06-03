@@ -22,8 +22,12 @@ func (i Item) Less(o ListSortValue) bool {
 func TestList_PushBack(t *testing.T) {
 	list2 := NewList()
 	list2.PushBack(20)
+	list2.PopBack()
 	list2.PushBack(1)
 	list2.PushBack(122)
+	list2.PushBack(122)
+	list2.EraseByValue(122)
+	list2.EraseByValue(1)
 
 	//>> 啥也不会做
 	list2.Sort()

@@ -1,6 +1,8 @@
 package gostd
 
-import "fmt"
+import (
+	"fmt"
+)
 
 /**
 * @Date:  2020/5/29 17:49
@@ -67,13 +69,11 @@ func (list *List) InsertBefore(where Iterator, value interface{}) Iterator {
 		return nil
 	}
 	before := it.node
-
 	if before == list.header.next {
 		return list.PushFront(value)
 	}
 
 	node := &ListNode{Value: value}
-
 	list.insert(before.prev, node)
 	return newListIterator(node)
 }
@@ -90,7 +90,6 @@ func (list *List) InsertAfter(where Iterator, value interface{}) Iterator {
 	}
 
 	node := &ListNode{Value: value}
-
 	list.insert(after, node)
 	return newListIterator(node)
 }
@@ -136,25 +135,25 @@ func (list *List) Clone() *List {
 	return list2
 }
 
-func (list *List) PopFront() *ListNode {
+func (list *List) PopFront() Iterator {
 	if list.length == 0 {
 		return nil
 	}
 
-	head := list.header.next
-	if !list.Erase(newListIterator(head)) {
+	head := list.Front()
+	if !list.Erase(head) {
 		return nil
 	}
 	return head
 }
 
-func (list *List) PopBack() *ListNode {
+func (list *List) PopBack() Iterator {
 	if list.length == 0 {
 		return nil
 	}
 
-	tail := list.tail
-	if !list.Erase(newListIterator(tail)) {
+	tail := list.Back()
+	if !list.Erase(tail) {
 		return nil
 	}
 	return tail
@@ -166,17 +165,7 @@ func (list *List) Erase(where Iterator) bool {
 		return false
 	}
 	node := it.node
-
-	node.prev.next = node.next
-
-	if node.next == nil {
-		list.tail = node.prev
-	} else {
-		node.next.prev = node.prev
-	}
-
-	list.length--
-	return true
+	return list.erase(node)
 }
 
 //>> 返回删除的元素个数
@@ -184,12 +173,30 @@ func (list *List) EraseByValue(value interface{}) uint64 {
 	cnt := uint64(0)
 	for node := list.header.next; node != nil; node = node.next {
 		if node.Value == value {
-			if list.Erase(newListIterator(node)) {
+			if list.erase(node) {
 				cnt++
 			}
 		}
 	}
 	return cnt
+}
+
+func (list *List) erase(node *ListNode) bool {
+	if node == list.header {
+		return false
+	}
+	node.prev.next = node.next
+	if node.next == nil {
+		if node.prev != list.header {
+			list.tail = node.prev
+		} else {
+			list.tail = nil
+		}
+	} else {
+		node.next.prev = node.prev
+	}
+	list.length--
+	return true
 }
 
 func (list *List) Len() uint64 {
