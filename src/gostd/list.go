@@ -362,12 +362,6 @@ func isHeader(node *ListNode) bool {
 //>> 迭代器
 //======================================
 
-type Iterator interface {
-	Next() Iterator
-	Prev() Iterator
-	Value() interface{} // ListNode.Value
-}
-
 type ListIterator struct {
 	node *ListNode
 }
