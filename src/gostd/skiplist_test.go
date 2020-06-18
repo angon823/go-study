@@ -14,42 +14,47 @@ import (
 **/
 
 func TestSkipList_SkipList(t *testing.T) {
-	//cnt := make(map[int8]int, 0)
-	//for i := 0; i < 10000000; i++ {
-	//	x := getRandomLevel()
-	//	cnt[x]++
-	//}
-	//fmt.Println(cnt)
-
 	sl := NewSkipList()
-	sl.Insert("Alice", 90)
-	sl.Insert("Bob", 90)
-	sl.Insert("Chalice", 10)
-	sl.Insert("David", 60)
-	sl.Insert("Eason", 100)
-	sl.Insert("Frank", 71.6)
+	sl.Insert(&item{"Alice", 90})
+	sl.Insert(&item{"Bob", 90})
+	sl.Insert(&item{"Chalice", 10})
+	sl.Insert(&item{"David", 60})
+	sl.Insert(&item{"Eason", 100})
+	sl.Insert(&item{"Frank", 71.6})
 
-	fmt.Println(sl.GetRank("Alice", 90))
-	fmt.Println(sl.GetRank("Bob", 90))
-	fmt.Println(sl.GetRank("Chalice", 10))
-	fmt.Println(sl.GetRank("David", 60))
+	fmt.Println(sl.GetRankByValue(&item{"Alice", 90}))
+	fmt.Println(sl.GetRankByValue(&item{"Bob", 90}))
+	fmt.Println(sl.GetRankByValue(&item{"Chalice", 10}))
+	fmt.Println(sl.GetRankByValue(&item{"David", 60}))
 
 	ret, _ := sl.getNodesByRank(1, 10)
 	for _, node := range ret {
-		fmt.Printf("%+v\n", node)
+		fmt.Printf("%+v\n", node.val)
 	}
 
 	fmt.Println("================================desc:")
 
 	ret, _ = sl.getNodesByRankDesc(1, 10)
 	for _, node := range ret {
-		fmt.Printf("%+v\n", node)
+		fmt.Printf("%+v\n", node.val)
 	}
 }
 
 type item struct {
 	name  string
 	score float64
+}
+
+func (i *item) Compare(o SkipListValue) bool {
+	r, ok := o.(*item)
+	if !ok {
+		return false
+	}
+
+	if i.score > r.score {
+		return true
+	}
+	return i.score == r.score && i.name > r.name
 }
 
 func BenchmarkSkipList_RandomInsert(b *testing.B) {
@@ -66,7 +71,7 @@ func BenchmarkSkipList_RandomInsert(b *testing.B) {
 
 	b.ResetTimer()
 	for _, n := range names {
-		sl.Insert(n.name, n.score)
+		sl.Insert(n)
 	}
 }
 
@@ -79,7 +84,7 @@ func BenchmarkSkipList_FIFOInsert(b *testing.B) {
 
 	b.ResetTimer()
 	for _, n := range names {
-		sl.Insert(n.name, n.score)
+		sl.Insert(n)
 	}
 }
 
@@ -96,12 +101,12 @@ func BenchmarkSkipList_RandomGetRank(b *testing.B) {
 	}
 
 	for _, n := range names {
-		sl.Insert(n.name, n.score)
+		sl.Insert(n)
 	}
 
 	b.ResetTimer()
 	for _, n := range names {
-		sl.GetRank(n.name, n.score)
+		sl.GetRankByValue(n)
 	}
 }
 
@@ -112,12 +117,12 @@ func BenchmarkSkipList_FIFOGetRank(b *testing.B) {
 		names = append(names, &item{"James" + strconv.Itoa(i), float64(i)})
 	}
 	for _, n := range names {
-		sl.Insert(n.name, n.score)
+		sl.Insert(n)
 	}
 
 	b.ResetTimer()
 	for _, n := range names {
-		sl.GetRank(n.name, n.score)
+		sl.GetRankByValue(n)
 	}
 }
 
@@ -160,6 +165,7 @@ func Benchmark_MapRandomGet(b *testing.B) {
 	}
 }
 
+// 直接key+score
 //E:\go-study\src\gostd>go test -bench=. -benchmem -run=none
 //goos: windows
 //goarch: amd64
@@ -171,3 +177,20 @@ func Benchmark_MapRandomGet(b *testing.B) {
 //Benchmark_MapRandomGet-6                20000000               173 ns/op               0 B/op          0 allocs/op
 //PASS
 //ok      _/E_/go-study/src/gostd 54.732s
+
+/*
+改为SkipListValue 后：
+BenchmarkSkipList_RandomInsert-6         1000000              3421 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_FIFOInsert-6           3000000               524 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_RandomGetRank-6        1000000              4229 ns/op               0 B/op          0 allocs/op
+BenchmarkSkipList_FIFOGetRank-6          3000000               561 ns/op               0 B/op          0 allocs/op
+
+BenchmarkSkipList_RandomInsert-6         1000000              3455 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_FIFOInsert-6           3000000               570 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_RandomGetRank-6        1000000              4294 ns/op               0 B/op          0 allocs/op
+BenchmarkSkipList_FIFOGetRank-6          3000000               580 ns/op               0 B/op          0 allocs/op
+
+Benchmark_MapRandomInsert-6      5000000               323 ns/op              99 B/op          0 allocs/op
+Benchmark_MapRandomGet-6        20000000               144 ns/op               0 B/op          0 allocs/op
+
+*/

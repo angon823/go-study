@@ -17,13 +17,13 @@ const (
 )
 
 type SkipListValue interface {
-	Less(SkipListValue) bool
+	// 升序排列 this < o 返回 true
+	// 降序排列 this < o 返回 false
+	Compare(o SkipListValue) bool
 }
 
 type skiplistNode struct {
-	key   string
-	score float64
-	//val      SkipListValue
+	val      SkipListValue
 	backward *skiplistNode    // 每个节点只有一个pre指针, 方便从后往前遍历
 	level    []*skiplistLevel // next指针, 当前p=0.25时, 每个节点平均有1/(1-0.25)=1.33个next指针, 如果没有pre, 优于平衡树的2个指针
 }
@@ -50,8 +50,8 @@ func getRandomLevel() int8 {
 	return level
 }
 
-func newNode(level int8, key string, score float64) *skiplistNode {
-	sn := &skiplistNode{key: key, score: score}
+func newNode(level int8, val SkipListValue) *skiplistNode {
+	sn := &skiplistNode{val: val}
 	sn.level = make([]*skiplistLevel, level)
 	for i := int8(0); i < level; i++ {
 		sn.level[i] = new(skiplistLevel)
@@ -62,23 +62,15 @@ func newNode(level int8, key string, score float64) *skiplistNode {
 func NewSkipList() *SkipList {
 	sl := &SkipList{}
 	sl.level = 1
-	sl.header = newNode(skiplistMaxLevel, "", 0)
+	sl.header = newNode(skiplistMaxLevel, nil)
 	return sl
 }
 
-func less(key1 string, score1 float64, key2 string, score2 float64) bool {
-	if score1 < score2 {
-		return true
-	}
-
-	if score1 == score2 {
-		return key1 < key2
-	}
-
-	return false
+func less(l, r SkipListValue) bool {
+	return l.Compare(r)
 }
 
-func (sl *SkipList) Insert(key string, score float64) bool {
+func (sl *SkipList) Insert(val SkipListValue) bool {
 	update := make([]*skiplistNode, skiplistMaxLevel)
 	rank := make([]uint64, skiplistMaxLevel)
 	cur := sl.header
@@ -87,7 +79,7 @@ func (sl *SkipList) Insert(key string, score float64) bool {
 			rank[i] += rank[i+1]
 		}
 		//>> 找到每一层要插入的位置: 满足 node < 新插入的值 < node.next(或nil)
-		for cur.level[i].forward != nil && less(cur.level[i].forward.key, cur.level[i].forward.score, key, score) {
+		for cur.level[i].forward != nil && less(cur.level[i].forward.val, val) {
 			// 到一层前面走过的长度之和
 			rank[i] += cur.level[i].span
 			cur = cur.level[i].forward
@@ -111,7 +103,7 @@ func (sl *SkipList) Insert(key string, score float64) bool {
 		sl.level = level
 	}
 
-	node := newNode(level, key, score)
+	node := newNode(level, val)
 	//>> 把新节点插入 0~level-1层
 	for i := int8(0); i < level; i++ {
 		//>> 单链表插入, update[i]之后
@@ -173,11 +165,11 @@ func (sl *SkipList) deleteNode(node *skiplistNode, update []*skiplistNode) {
 	sl.length--
 }
 
-func (sl *SkipList) Delete(key string, score float64) bool {
+func (sl *SkipList) Delete(val SkipListValue) bool {
 	update := make([]*skiplistNode, skiplistMaxLevel)
 	cur := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for cur.level[i].forward != nil && less(cur.level[i].forward.key, cur.level[i].forward.score, key, score) {
+		for cur.level[i].forward != nil && less(cur.level[i].forward.val, val) {
 			cur = cur.level[i].forward
 		}
 		update[i] = cur
@@ -187,14 +179,22 @@ func (sl *SkipList) Delete(key string, score float64) bool {
 	cur = cur.level[0].forward
 
 	if cur != nil &&
-		!less(cur.key, cur.score, key, score) &&
-		!less(key, score, cur.key, cur.score) {
+		!less(cur.val, val) &&
+		!less(val, cur.val) {
 		//>> 相等说明找到了
 		sl.deleteNode(cur, update)
 		return true
 	}
 
 	return false
+}
+
+func (sl *SkipList) GetValueByRank(rank uint64) SkipListValue {
+	node := sl.getNodeByRank(rank)
+	if node != nil {
+		return node.val
+	}
+	return nil
 }
 
 /* Finds an element by its rank. The rank argument needs to be 1-based. */
@@ -215,6 +215,19 @@ func (sl *SkipList) getNodeByRank(rank uint64) *skiplistNode {
 	return nil
 }
 
+func (sl *SkipList) GetValueByRangeRank(start, end uint64) (vals []SkipListValue) {
+	vals = make([]SkipListValue, 0)
+	nodes, ok := sl.getNodesByRank(start, end)
+	if !ok {
+		return vals
+	}
+
+	for _, n := range nodes {
+		vals = append(vals, n.val)
+	}
+	return vals
+}
+
 // return [start, min(sl.length,end)] where 1<=start
 func (sl *SkipList) getNodesByRank(start, end uint64) (nodes []*skiplistNode, ok bool) {
 	if start > end {
@@ -232,6 +245,19 @@ func (sl *SkipList) getNodesByRank(start, end uint64) (nodes []*skiplistNode, ok
 	}
 
 	return nodes, true
+}
+
+func (sl *SkipList) GetValueByRangeRankDesc(start, end uint64) (vals []SkipListValue) {
+	vals = make([]SkipListValue, 0)
+	nodes, ok := sl.getNodesByRankDesc(start, end)
+	if !ok {
+		return vals
+	}
+
+	for _, n := range nodes {
+		vals = append(vals, n.val)
+	}
+	return vals
 }
 
 func (sl *SkipList) getNodesByRankDesc(start, end uint64) (nodes []*skiplistNode, ok bool) {
@@ -254,19 +280,21 @@ func (sl *SkipList) getNodesByRankDesc(start, end uint64) (nodes []*skiplistNode
 }
 
 // @return (rank (1 ~ based), true) if exist otherwise (0,false)
-func (sl *SkipList) GetRank(key string, score float64) (uint64, bool) {
+func (sl *SkipList) GetRankByValue(val SkipListValue) (uint64, bool) {
 	cur := sl.header
 	rank := uint64(0)
 	for i := sl.level - 1; i >= 0; i-- {
 		for next := cur.level[i].forward; cur.level[i].forward != nil &&
-			(less(next.key, next.score, key, score) ||
-				(!less(next.key, next.score, key, score) && !less(key, score, next.key, next.score))); next = cur.level[i].forward {
+			(less(next.val, val) ||
+				(!less(next.val, val) && !less(val, next.val))); next = cur.level[i].forward {
 			rank += cur.level[i].span
 			cur = next
 		}
 	}
 
-	if cur != nil && cur.key == key {
+	if cur != nil && cur != sl.header &&
+		!less(cur.val, val) &&
+		!less(val, cur.val) {
 		return rank, true
 	}
 
