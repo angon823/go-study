@@ -136,9 +136,9 @@ func (d *Deque) Size() int {
 	return d.size
 }
 
-func (d *Deque) Cap() int {
-	return kChuckSize * len(d.chucks)
-}
+//func (d *Deque) Cap() int {
+//	return kChuckSize * len(d.chucks)
+//}
 
 func (d *Deque) Swap(i, j int) {
 	valI := d.At(i)
