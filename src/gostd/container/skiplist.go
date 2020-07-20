@@ -1,4 +1,4 @@
-package gostd
+package container
 
 import (
 	"math/rand"
