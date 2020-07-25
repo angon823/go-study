@@ -45,16 +45,19 @@ type item struct {
 	score float64
 }
 
-func (i *item) Compare(o SkipListValue) bool {
+func (i *item) Compare(o SkipListValue) int {
 	r, ok := o.(*item)
 	if !ok {
-		return false
+		return -1
 	}
 
 	if i.score > r.score {
-		return true
+		return 1
 	}
-	return i.score == r.score && i.name > r.name
+	if i.score == r.score && i.name > r.name {
+		return 1
+	}
+	return -1
 }
 
 func BenchmarkSkipList_RandomInsert(b *testing.B) {
@@ -126,9 +129,9 @@ func BenchmarkSkipList_FIFOGetRank(b *testing.B) {
 	}
 }
 
-// Benchmark_MapInsert-6   	 5000000	       370 ns/op
+//Benchmark_MapRandomInsert-6   	 5000000	       432 ns/op
 func Benchmark_MapRandomInsert(b *testing.B) {
-	mp := make(map[float64]string)
+	mp := make(map[string]float64)
 	indexs := make(map[int]string, 0)
 	for i := 0; i < b.N; i++ {
 		indexs[i] = "James" + strconv.Itoa(i)
@@ -141,12 +144,13 @@ func Benchmark_MapRandomInsert(b *testing.B) {
 
 	b.ResetTimer()
 	for _, n := range names {
-		mp[n.score] = n.name
+		mp[n.name] = n.score
 	}
 }
 
+//Benchmark_MapRandomGet-6   	20000000	       166 ns/op
 func Benchmark_MapRandomGet(b *testing.B) {
-	mp := make(map[float64]string)
+	mp := make(map[string]float64)
 	indexs := make(map[int]string, 0)
 	for i := 0; i < b.N; i++ {
 		indexs[i] = "James" + strconv.Itoa(i)
@@ -156,12 +160,12 @@ func Benchmark_MapRandomGet(b *testing.B) {
 		names = append(names, &item{n, float64(i)})
 	}
 	for _, n := range names {
-		mp[n.score] = n.name
+		mp[n.name] = n.score
 	}
 
 	b.ResetTimer()
 	for _, n := range names {
-		_, _ = mp[n.score]
+		_, _ = mp[n.name]
 	}
 }
 

@@ -17,15 +17,15 @@ const (
 )
 
 type SkipListValue interface {
-	// 升序排列 this < o 返回 true
-	// 降序排列 this < o 返回 false
-	Compare(o SkipListValue) bool
+	// 升序排列 this < o 返回 1
+	// 降序排列 this < o 返回 0
+	Compare(o SkipListValue) int
 }
 
 type skiplistNode struct {
 	val      SkipListValue
 	backward *skiplistNode    // 每个节点只有一个pre指针, 方便从后往前遍历
-	level    []*skiplistLevel // next指针, 当前p=0.25时, 每个节点平均有1/(1-0.25)=1.33个next指针, 如果没有pre, 优于平衡树的2个指针
+	level    []*skiplistLevel // next指针, 当前p=0.25时, 每个节点平均有1/(1-0.25)=1.33个next指针
 }
 
 type skiplistLevel struct {
@@ -67,7 +67,7 @@ func NewSkipList() *SkipList {
 }
 
 func less(l, r SkipListValue) bool {
-	return l.Compare(r)
+	return l.Compare(r) < 0
 }
 
 func (sl *SkipList) Insert(val SkipListValue) bool {
