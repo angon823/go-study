@@ -13,19 +13,62 @@ import (
 
 **/
 
+type item struct {
+	name  string
+	score float64
+}
+
+func (i *item) Compare(o interface{}) int {
+	r, ok := o.(*item)
+	if !ok {
+		return -1
+	}
+
+	if i.score < r.score {
+		return -1
+	}
+
+	if i.score > r.score {
+		return 1
+	}
+
+	if i.name < r.name {
+		return -1
+	}
+
+	if i.name > r.name {
+		return 1
+	}
+	return 0
+}
+
 func TestSkipList_SkipList(t *testing.T) {
 	sl := NewSkipList()
 	sl.Insert(&item{"Alice", 90})
 	sl.Insert(&item{"Bob", 90})
 	sl.Insert(&item{"Chalice", 10})
 	sl.Insert(&item{"David", 60})
+	sl.Insert(&item{"James", 60})
 	sl.Insert(&item{"Eason", 100})
 	sl.Insert(&item{"Frank", 71.6})
 
+	fmt.Println(sl.GetRankByValue(&item{"Chalice", 10}))
 	fmt.Println(sl.GetRankByValue(&item{"Alice", 90}))
 	fmt.Println(sl.GetRankByValue(&item{"Bob", 90}))
-	fmt.Println(sl.GetRankByValue(&item{"Chalice", 10}))
 	fmt.Println(sl.GetRankByValue(&item{"David", 60}))
+	fmt.Println("================================")
+
+	fmt.Println(sl.GetValueByRank(1))
+	fmt.Println(sl.GetValueByRank(2))
+	fmt.Println(sl.GetValueByRank(3))
+	fmt.Println(sl.GetValueByRank(4))
+	fmt.Println(sl.GetValueByRank(5))
+	fmt.Println(sl.GetValueByRank(6))
+	fmt.Println(sl.GetValueByRank(7))
+
+	sl.Delete(&item{"David", 60})
+
+	fmt.Println("================================")
 
 	ret, _ := sl.getNodesByRank(1, 10)
 	for _, node := range ret {
@@ -38,26 +81,6 @@ func TestSkipList_SkipList(t *testing.T) {
 	for _, node := range ret {
 		fmt.Printf("%+v\n", node.val)
 	}
-}
-
-type item struct {
-	name  string
-	score float64
-}
-
-func (i *item) Compare(o SkipListValue) int {
-	r, ok := o.(*item)
-	if !ok {
-		return -1
-	}
-
-	if i.score > r.score {
-		return 1
-	}
-	if i.score == r.score && i.name > r.name {
-		return 1
-	}
-	return -1
 }
 
 func BenchmarkSkipList_RandomInsert(b *testing.B) {

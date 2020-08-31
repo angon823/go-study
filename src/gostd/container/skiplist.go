@@ -2,12 +2,13 @@ package container
 
 import (
 	"math/rand"
+	"time"
 )
 
 /**
 * @Date:  2020/5/29 18:03
 
-* @Description: 跳表实现
+* @Description: 跳表实现, 因为只打算用来做排行榜，所以只提供排序功能，未提供查找功能，查找用红黑树更佳
 
 **/
 
@@ -17,9 +18,7 @@ const (
 )
 
 type SkipListValue interface {
-	// 升序排列 this < o 返回 1
-	// 降序排列 this < o 返回 0
-	Compare(o SkipListValue) int
+	SortComparator
 }
 
 type skiplistNode struct {
@@ -39,12 +38,12 @@ type SkipList struct {
 	level        int8
 }
 
-//var rand1 = rand.New(rand.NewSource(time.Now().UnixNano()))
+var rand1 = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // 论文<<Skip Lists: A Probabilistic Alternative to Balanced Trees>>算法
 func getRandomLevel() int8 {
 	level := int8(1)
-	for float64(rand.Intn(100)) < skiplistP*100 && level < skiplistMaxLevel {
+	for float64(rand1.Intn(100)) < skiplistP*100 && level < skiplistMaxLevel {
 		level++
 	}
 	return level
@@ -66,10 +65,6 @@ func NewSkipList() *SkipList {
 	return sl
 }
 
-func less(l, r SkipListValue) bool {
-	return l.Compare(r) < 0
-}
-
 func (sl *SkipList) Insert(val SkipListValue) bool {
 	update := make([]*skiplistNode, skiplistMaxLevel)
 	rank := make([]uint64, skiplistMaxLevel)
@@ -79,7 +74,7 @@ func (sl *SkipList) Insert(val SkipListValue) bool {
 			rank[i] += rank[i+1]
 		}
 		//>> 找到每一层要插入的位置: 满足 node < 新插入的值 < node.next(或nil)
-		for cur.level[i].forward != nil && less(cur.level[i].forward.val, val) {
+		for cur.level[i].forward != nil && cur.level[i].forward.val.Compare(val) < 0 {
 			// 到一层前面走过的长度之和
 			rank[i] += cur.level[i].span
 			cur = cur.level[i].forward
@@ -169,7 +164,7 @@ func (sl *SkipList) Delete(val SkipListValue) bool {
 	update := make([]*skiplistNode, skiplistMaxLevel)
 	cur := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for cur.level[i].forward != nil && less(cur.level[i].forward.val, val) {
+		for cur.level[i].forward != nil && cur.level[i].forward.val.Compare(val) < 0 {
 			cur = cur.level[i].forward
 		}
 		update[i] = cur
@@ -178,9 +173,7 @@ func (sl *SkipList) Delete(val SkipListValue) bool {
 	// 再向前走一步
 	cur = cur.level[0].forward
 
-	if cur != nil &&
-		!less(cur.val, val) &&
-		!less(val, cur.val) {
+	if cur != nil && cur.val.Compare(val) == 0 {
 		//>> 相等说明找到了
 		sl.deleteNode(cur, update)
 		return true
@@ -284,17 +277,13 @@ func (sl *SkipList) GetRankByValue(val SkipListValue) (uint64, bool) {
 	cur := sl.header
 	rank := uint64(0)
 	for i := sl.level - 1; i >= 0; i-- {
-		for next := cur.level[i].forward; cur.level[i].forward != nil &&
-			(less(next.val, val) ||
-				(!less(next.val, val) && !less(val, next.val))); next = cur.level[i].forward {
+		for next := cur.level[i].forward; cur.level[i].forward != nil && next.val.Compare(val) <= 0; next = cur.level[i].forward {
 			rank += cur.level[i].span
 			cur = next
 		}
 	}
 
-	if cur != nil && cur != sl.header &&
-		!less(cur.val, val) &&
-		!less(val, cur.val) {
+	if cur != nil && cur != sl.header && cur.val.Compare(val) == 0 {
 		return rank, true
 	}
 
