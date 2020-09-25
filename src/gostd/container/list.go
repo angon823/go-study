@@ -7,9 +7,14 @@ import (
 /**
 * @Date:  2020/5/29 17:49
 
-* @Description: 链表实现
+* @Description: 链表实现, 提供拼接，排序(nLog(n))等功能
 
 **/
+
+//>> if list need sort, must be implement ListSortValue
+type ListSortValue interface {
+	SortComparator
+}
 
 type ListNode struct {
 	prev, next *ListNode
@@ -215,7 +220,7 @@ func (list *List) Back() Iterator {
 	return newListIterator(list.tail)
 }
 
-func (list *List) Traverse(fun func(value interface{}) bool) {
+func (list *List) Foreach(fun func(value interface{}) bool) {
 	for node := list.header.next; node != nil; node = node.next {
 		if !fun(node.Value) {
 			return
@@ -223,13 +228,9 @@ func (list *List) Traverse(fun func(value interface{}) bool) {
 	}
 }
 
-type ListSortValue interface {
-	Less(ListSortValue) bool
-}
-
 func Printf(str string, list *List) {
 	fmt.Printf("%s: ", str)
-	list.Traverse(func(value interface{}) bool {
+	list.Foreach(func(value interface{}) bool {
 		fmt.Printf("%v ", value)
 		return true
 	})
@@ -310,7 +311,7 @@ func (list *List) orderMerge(list2 *List) *List {
 		if !ok {
 			return list.Join(list2, true)
 		}
-		if val1.Less(val2) {
+		if val1.Compare(val2) < 0 {
 			pre = head1
 			head1 = head1.next
 		} else {

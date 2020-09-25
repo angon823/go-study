@@ -111,7 +111,7 @@ func TestRBTree_InOrder(t *testing.T) {
 	i, j := rbtree.IsRbTree()
 	fmt.Println("IsRbTree: ", i, j)
 
-	rbtree.InOrder(func(value RBTValue) bool {
+	rbtree.Foreach(func(value interface{}) bool {
 		fmt.Println(value)
 		return true
 	})
@@ -135,7 +135,7 @@ func TestRBT2(t *testing.T) {
 	node40 := rbtree.lowerBound(40)
 	fmt.Println(node40.getValue(), node40.successor().getValue())
 
-	c, n := rbtree.Erase(50)
+	n, c := rbtree.Erase(50)
 	fmt.Printf("%v, %+v\n", c, n)
 
 	n6 := NewRBTIterator(rbtree.findNode(60))

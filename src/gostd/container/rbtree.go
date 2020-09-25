@@ -18,10 +18,8 @@ https://www.cnblogs.com/skywang12345/p/3245399.html [这个图是错的，伪代
 **/
 
 //>> 不要在内部私自更改会影响排序的Key
-type RBTValue interface {
-	Key() interface{}
-	//>> ==返回0, <返回<0, >返回>0
-	Compare(key interface{}) int
+type RbtValue interface {
+	FindComparator
 }
 
 type Color bool
@@ -36,7 +34,7 @@ type RBTNode struct {
 	left   *RBTNode
 	right  *RBTNode
 	color  Color
-	Value  RBTValue
+	Value  RbtValue
 }
 
 func (n *RBTNode) grandparent() *RBTNode {
@@ -102,7 +100,7 @@ func (n *RBTNode) successor() *RBTNode {
 	return y
 }
 
-func (n *RBTNode) getValue() RBTValue {
+func (n *RBTNode) getValue() RbtValue {
 	if n == nil {
 		return nil
 	}
@@ -145,24 +143,29 @@ func (rb *RBTree) UpperBound(key interface{}) RBTIterator {
 }
 
 //>> 返回插入节点迭代器
-func (rb *RBTree) Insert(val RBTValue) RBTIterator {
+func (rb *RBTree) Insert(val RbtValue) RBTIterator {
 	node := rb.insert(val)
 	return NewRBTIterator(node)
 }
 
 //>> 返回删除节点个数和下一个节点的迭代器
-func (rb *RBTree) Erase(key interface{}) (int, RBTIterator) {
+func (rb *RBTree) Erase(key interface{}) (RBTIterator, int) {
 	node, cnt := rb.erase(key)
-	return cnt, NewRBTIterator(node)
+	return NewRBTIterator(node), cnt
 }
 
 //>> 返回删除节点的下一个节点的迭代器
-func (rb *RBTree) EraseAt(where RBTIterator) RBTIterator {
-	if !where.IsValid() {
-		return where
+func (rb *RBTree) EraseAt(where Iterator) RBTIterator {
+	rbIter, ok := where.(RBTIterator)
+	if !ok {
+		return NewRBTIterator(nil)
 	}
-	successor := where.Next()
-	rb.eraseNode2(where.node)
+
+	if !rbIter.IsValid() {
+		return rbIter
+	}
+	successor := where.Next().(RBTIterator)
+	rb.eraseNode2(successor.node)
 	return successor
 }
 
@@ -195,7 +198,7 @@ func (rb *RBTree) Clear() {
 	rb.size = 0
 }
 
-func (rb *RBTree) InOrder(fun func(val RBTValue) bool) {
+func (rb *RBTree) Foreach(fun func(val interface{}) bool) {
 	if rb.root == nil {
 		return
 	}
@@ -295,7 +298,7 @@ func (rb *RBTree) rightRotate(x *RBTNode) {
 }
 
 //>> 插入
-func (rb *RBTree) insert(value RBTValue) *RBTNode {
+func (rb *RBTree) insert(value RbtValue) *RBTNode {
 	cur := rb.root
 	var p *RBTNode
 	for cur != nil {
@@ -658,18 +661,18 @@ func NewRBTIterator(node *RBTNode) RBTIterator {
 	return RBTIterator{node: node}
 }
 
-func (iter *RBTIterator) IsValid() bool {
+func (iter RBTIterator) IsValid() bool {
 	return iter.node != nil
 }
 
-func (iter RBTIterator) Next() RBTIterator {
+func (iter RBTIterator) Next() Iterator {
 	if iter.IsValid() {
 		iter.node = iter.node.successor()
 	}
 	return iter
 }
 
-func (iter RBTIterator) Prev() RBTIterator {
+func (iter RBTIterator) Prev() Iterator {
 	if iter.IsValid() {
 		iter.node = iter.node.preSuccessor()
 	}
@@ -683,6 +686,6 @@ func (iter RBTIterator) Key() interface{} {
 	return nil
 }
 
-func (iter RBTIterator) Value() RBTValue {
+func (iter RBTIterator) Value() interface{} {
 	return iter.node.getValue()
 }

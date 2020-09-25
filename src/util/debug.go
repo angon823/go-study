@@ -1,4 +1,4 @@
-package container
+package util
 
 import "fmt"
 
@@ -11,7 +11,7 @@ import "fmt"
 
 var gDebug = true
 
-func debugPanic(v interface{}) {
+func DebugPanic(v interface{}) {
 	if gDebug {
 		panic(v)
 	} else {

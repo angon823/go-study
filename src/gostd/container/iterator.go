@@ -1,7 +1,5 @@
 package container
 
-import "fmt"
-
 /**
 * @Date:  2020/6/11 10:42
 
@@ -15,12 +13,6 @@ type Iterator interface {
 	Value() interface{}
 }
 
-//type FIFOIterator interface {
-//	Next() Iterator
-//	Prev() Iterator
-//	Value() interface{}
-//}
-
 type RandomIterator interface {
 	Next() Iterator
 	Prev() Iterator
@@ -28,18 +20,15 @@ type RandomIterator interface {
 	Pos() int
 }
 
-func Advance(iter Iterator, n int32) (afterIter Iterator, forward int) {
-	switch typ := iter.(type) {
+func Advance(iter Iterator, forward int) (afterIter Iterator) {
+	switch /*typ :=*/ iter.(type) {
 	case RandomIterator:
-		pos := typ.Pos() + forward
-		// todo
-		fmt.Println(pos)
+		//pos := typ.Pos() + forward
 
 	default:
-		for iter.Next() != nil && n >= 0 {
+		for iter.Next() != nil && forward > 0 {
 			iter = iter.Next()
-			forward++
-			n--
+			forward--
 		}
 		afterIter = iter
 

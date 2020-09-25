@@ -1,5 +1,7 @@
 package container
 
+import "util"
+
 /**
 * @Date:  2020/5/29 17:54
 
@@ -40,7 +42,7 @@ func (d *Deque) PushBack(val interface{}) {
 
 func (d *Deque) PopFront() interface{} {
 	if d.firstArray() == nil {
-		debugPanic("Deque PopFront out of range")
+		util.DebugPanic("Deque PopFront out of range")
 		return nil
 	}
 	val := d.firstArray().popFront()
@@ -51,7 +53,7 @@ func (d *Deque) PopFront() interface{} {
 
 func (d *Deque) PopBack() interface{} {
 	if d.lastArray() == nil {
-		debugPanic("Deque PopBack out of range")
+		util.DebugPanic("Deque PopBack out of range")
 		return nil
 	}
 	val := d.lastArray().popBack()
@@ -62,7 +64,7 @@ func (d *Deque) PopBack() interface{} {
 
 func (d *Deque) Insert(pos int, val interface{}) {
 	if pos < 0 || pos > d.Size() {
-		debugPanic("Deque Insert out of range")
+		util.DebugPanic("Deque Insert out of range")
 	}
 
 	if pos == 0 {
@@ -85,7 +87,7 @@ func (d *Deque) Insert(pos int, val interface{}) {
 
 func (d *Deque) Erase(pos int) interface{} {
 	if pos < 0 || pos >= d.Size() {
-		debugPanic("Deque Erase out of range")
+		util.DebugPanic("Deque Erase out of range")
 	}
 	arrIdx, arrPos := d.getPos(pos)
 	val := d.arrayAt(arrIdx).erase(arrPos)
@@ -116,7 +118,7 @@ func (d *Deque) Back() interface{} {
 
 func (d *Deque) At(pos int) interface{} {
 	if pos < 0 || pos >= d.Size() {
-		debugPanic("Deque At out of range")
+		util.DebugPanic("Deque At out of range")
 		return nil
 	}
 	arrIdx, pos := d.getPos(pos)
@@ -125,7 +127,7 @@ func (d *Deque) At(pos int) interface{} {
 
 func (d *Deque) Set(pos int, val interface{}) {
 	if pos < 0 || pos >= d.Size() {
-		debugPanic("Deque Set out of range")
+		util.DebugPanic("Deque Set out of range")
 		return
 	}
 	arrIdx, pos := d.getPos(pos)
