@@ -15,8 +15,8 @@ import (
 
 type Item int
 
-func (i Item) Less(o ListSortValue) bool {
-	return i < o.(Item)
+func (i Item) Compare(o interface{}) int {
+	return int(i) - int(o.(Item))
 }
 
 func TestList_PushBack(t *testing.T) {

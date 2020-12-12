@@ -1,6 +1,8 @@
 package container
 
-import "util"
+import (
+	"util"
+)
 
 /**
 * @Author: 大勇
@@ -32,7 +34,7 @@ func newRingArray(size int) *ringArray {
 
 func (arr *ringArray) pushFront(val interface{}) {
 	if arr.isFull() {
-		util.debugPanic("debug pushFront is full")
+		util.DebugPanic("debug pushFront is full")
 		return
 	}
 
@@ -43,7 +45,7 @@ func (arr *ringArray) pushFront(val interface{}) {
 
 func (arr *ringArray) pushBack(val interface{}) {
 	if arr.isFull() {
-		util.debugPanic("debug pushBack is full")
+		util.DebugPanic("debug pushBack is full")
 		return
 	}
 
@@ -76,7 +78,7 @@ func (arr *ringArray) popBack() interface{} {
 
 func (arr *ringArray) insert(pos int, val interface{}) bool {
 	if arr.isFull() || pos < 0 || pos >= arr.cap() {
-		util.debugPanic("arr is full or pos out of range")
+		util.DebugPanic("arr is full or pos out of range")
 		return false
 	}
 
@@ -99,7 +101,7 @@ func (arr *ringArray) insert(pos int, val interface{}) bool {
 
 func (arr *ringArray) erase(pos int) interface{} {
 	if pos < 0 || pos >= arr.cap() {
-		util.debugPanic("arr erase out of range")
+		util.DebugPanic("arr erase out of range")
 		return nil
 	}
 
@@ -120,7 +122,7 @@ func (arr *ringArray) erase(pos int) interface{} {
 
 func (arr *ringArray) at(pos int) interface{} {
 	if pos < 0 || pos >= arr.cap() {
-		util.debugPanic("ringArray at out of range")
+		util.DebugPanic("ringArray at out of range")
 		return nil
 	}
 	return arr.data[(pos+arr.start)%arr.cap()]
@@ -128,7 +130,7 @@ func (arr *ringArray) at(pos int) interface{} {
 
 func (arr *ringArray) set(pos int, val interface{}) {
 	if pos < 0 || pos >= arr.cap() {
-		util.debugPanic("ringArray set out of range")
+		util.DebugPanic("ringArray set out of range")
 		return
 	}
 	arr.data[(pos+arr.start)%arr.cap()] = val

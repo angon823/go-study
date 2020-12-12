@@ -145,7 +145,7 @@ func TestRBT2(t *testing.T) {
 	i, j = rbtree.IsRbTree()
 	fmt.Println("IsRbTree: ", i, j)
 
-	for i := rbtree.Begin(); i != rbtree.End(); i = i.Next() {
+	for i := rbtree.Begin(); i != rbtree.End(); i = i.Next().(RBTIterator) {
 		fmt.Printf("i: %p %+v\n", i.node, i.Value())
 	}
 }
