@@ -192,6 +192,28 @@ func Benchmark_MapRandomGet(b *testing.B) {
 	}
 }
 
+func BenchmarkSkipList_Delete(b *testing.B) {
+	tree := NewSkipList()
+	indexs := make(map[int]string, 0)
+	for i := 0; i < b.N; i++ {
+		indexs[i] = "James" + strconv.Itoa(i)
+	}
+
+	names := make([]*item, 0)
+	for i, n := range indexs {
+		names = append(names, &item{n, float64(i)})
+	}
+
+	for _, n := range names {
+		tree.Insert(n)
+	}
+
+	b.ResetTimer()
+	for _, n := range names {
+		tree.Delete(n)
+	}
+}
+
 // 直接key+score
 //E:\go-study\src\gostd>go test -bench=. -benchmem -run=none
 //goos: windows

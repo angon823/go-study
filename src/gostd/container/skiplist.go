@@ -13,7 +13,7 @@ import (
 **/
 
 const (
-	skiplistMaxLevel = 12
+	skiplistMaxLevel = 32
 	skiplistP        = 0.25 // 1/4
 )
 
@@ -38,12 +38,12 @@ type SkipList struct {
 	level        int8
 }
 
-var rand1 = rand.New(rand.NewSource(time.Now().UnixNano()))
+var skipListRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // 论文<<Skip Lists: A Probabilistic Alternative to Balanced Trees>>算法
 func getRandomLevel() int8 {
 	level := int8(1)
-	for float64(rand1.Intn(100)) < skiplistP*100 && level < skiplistMaxLevel {
+	for float64(skipListRand.Intn(100)) < skiplistP*100 && level < skiplistMaxLevel {
 		level++
 	}
 	return level

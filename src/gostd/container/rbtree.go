@@ -653,6 +653,20 @@ func (rb *RBTree) rbDeleteFixup(x, parent *RBTNode) {
 	}
 }
 
+func (t *RBTree) height(node *RBTNode) int {
+	if node == nil {
+		return 0
+	}
+
+	left := t.height(node.left)
+	right := t.height(node.right)
+	if left > right {
+		return left + 1
+	} else {
+		return right + 1
+	}
+}
+
 type RBTIterator struct {
 	node *RBTNode
 }

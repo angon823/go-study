@@ -2,6 +2,7 @@ package container
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -207,6 +208,28 @@ func TestInsertDelete(t *testing.T) {
 		}
 	}
 	tree.Clear()
+}
+
+func TestRBTree_Height(t1 *testing.T) {
+
+	var rand1 = rand.New(rand.NewSource(treapRand.Int63()))
+
+	n := 128
+	best := int(math.Log2(float64(n))) + 1
+	fmt.Println("best: ", best)
+
+	for i := 0; i < 20; i++ {
+		t := NewRBTree()
+
+		for i := 0; i < n; i++ {
+			t.Insert(V(rand1.Int()))
+		}
+
+		//t.print(t.root)
+
+		fmt.Println("height: ", t.height(t.root))
+	}
+
 }
 
 type RBTItem struct {
