@@ -64,6 +64,49 @@ func (node *TreapNode) fixSize() {
 	node.size = size
 }
 
+type Treap struct {
+	root *TreapNode
+}
+
+func NewTreap() *Treap {
+	return &Treap{}
+}
+
+func (t *Treap) Insert(val TreapValue) *TreapNode {
+	node := newTreapNode(val)
+	t.root = t.insert(t.root, node)
+	return node
+}
+
+func (t *Treap) Delete(val TreapValue) *TreapNode {
+	var del *TreapNode
+	t.root, del = t.remove(t.root, val)
+	return del
+}
+
+func (t *Treap) Size() int {
+	if t.root == nil {
+		return 0
+	}
+	return t.root.size
+}
+
+func (t *Treap) Foreach(f func(val TreapValue) bool) {
+	t.foreach(t.root, f)
+}
+
+func (t *Treap) GetRankByValue(val TreapValue) int {
+	rank, ok := t.getRankByValue(t.root, val)
+	if !ok {
+		return -1
+	}
+	return rank
+}
+
+func (t *Treap) GetValueByRank(rank int) TreapValue {
+	return t.getValueByRank(t.root, rank)
+}
+
 func (t *Treap) leftRotate(root *TreapNode) (newRoot *TreapNode) {
 	newRoot = root.right
 	root.right = newRoot.left
@@ -80,26 +123,6 @@ func (t *Treap) rightRotate(root *TreapNode) (newRoot *TreapNode) {
 	root.fixSize()
 	newRoot.fixSize()
 	return
-}
-
-type Treap struct {
-	root *TreapNode
-}
-
-func NewTreap() *Treap {
-	return &Treap{}
-}
-
-func (t *Treap) Insert(val TreapValue) *TreapNode {
-	node := newTreapNode(val)
-	t.root = t.insert(t.root, node)
-	return node
-}
-
-func (t *Treap) Remove(val TreapValue) *TreapNode {
-	var del *TreapNode
-	t.root, del = t.remove(t.root, val)
-	return del
 }
 
 func (t *Treap) insert(root, node *TreapNode) *TreapNode {
@@ -155,6 +178,57 @@ func (t *Treap) remove(root *TreapNode, val TreapValue) (*TreapNode, *TreapNode)
 	return root, del
 }
 
+func (t *Treap) getRankByValue(root *TreapNode, val TreapValue) (int, bool) {
+	if root == nil {
+		return 0, false
+	}
+
+	leftSize := 0
+	if root.left != nil {
+		leftSize += root.left.size
+	}
+
+	k := root.Value.Compare(val)
+	if k < 0 {
+		right, ok := t.getRankByValue(root.right, val)
+		return leftSize + 1 + right, ok
+	} else if k > 0 {
+		return t.getRankByValue(root.left, val)
+	} else {
+		return leftSize + 1, true
+	}
+}
+
+func (t *Treap) getValueByRank(root *TreapNode, rank int) TreapValue {
+	if root == nil {
+		return nil
+	}
+
+	leftSize := 0
+	if root.left != nil {
+		leftSize += root.left.size
+	}
+
+	if rank < leftSize+1 {
+		return t.getValueByRank(root.left, rank)
+	} else if rank > leftSize+1 {
+		return t.getValueByRank(root.right, rank-leftSize-1)
+	} else {
+		return root.Value
+	}
+}
+
+func (t *Treap) foreach(node *TreapNode, f func(value TreapValue) bool) {
+	if node == nil {
+		return
+	}
+	t.foreach(node.left, f)
+	if !f(node.Value) {
+		return
+	}
+	t.foreach(node.right, f)
+}
+
 func (t *Treap) print(node *TreapNode) {
 	if node == nil {
 		return
@@ -162,4 +236,18 @@ func (t *Treap) print(node *TreapNode) {
 	t.print(node.left)
 	fmt.Println(node.Value)
 	t.print(node.right)
+}
+
+func (t *Treap) height(node *TreapNode) int {
+	if node == nil {
+		return 0
+	}
+
+	left := t.height(node.left)
+	right := t.height(node.right)
+	if left > right {
+		return left + 1
+	} else {
+		return right + 1
+	}
 }
