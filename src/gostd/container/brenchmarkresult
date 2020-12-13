@@ -1,0 +1,42 @@
+F:\Code\go-study\src\gostd\container>go test -bench=.*RbTree -benchmem -run=none
+goos: windows
+goarch: amd64
+pkg: gostd/container
+BenchmarkRbTree_StringInsert-8           1000000              2452 ns/op             367 B/op         20 allocs/op
+BenchmarkRbTree_StringGet-8              1000000              1570 ns/op              16 B/op          1 allocs/op
+BenchmarkRbTree_StringDelete-8           1000000              1651 ns/op              16 B/op          1 allocs/op
+BenchmarkRbTree_IntInsert-8              1000000              1358 ns/op             207 B/op         20 allocs/op
+BenchmarkRbTree_IntGet-8                 1333890               943 ns/op               8 B/op          0 allocs/op
+BenchmarkRbTree_IntDelete-8              1000000              1054 ns/op               8 B/op          0 allocs/op
+PASS
+ok      gostd/container 22.310s
+
+F:\Code\go-study\src\gostd\container>go test -bench=.*Treap -benchmem -run=none
+goos: windows
+goarch: amd64
+pkg: gostd/container
+BenchmarkTreap_RandomInsert-8            1000000              1552 ns/op              48 B/op          1 allocs/op
+BenchmarkTreap_FIFOInsert-8              6953650               179 ns/op              48 B/op          1 allocs/op
+BenchmarkTreap_RandomGetRank-8           1000000              1390 ns/op               0 B/op          0 allocs/op
+BenchmarkTreap_FIFOGetRank-8             5186169               282 ns/op               0 B/op          0 allocs/op
+BenchmarkTreap_Delete-8                  1000000              1222 ns/op               0 B/op          0 allocs/op
+PASS
+ok      gostd/container 14.240s
+
+
+F:\Code\go-study\src\gostd\container>go test -bench=.*SkipList -benchmem -run=none
+goos: windows
+goarch: amd64
+pkg: gostd/container
+BenchmarkSkipList_RandomInsert-8         1000000              3055 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_FIFOInsert-8           3373768               419 ns/op              80 B/op          3 allocs/op
+BenchmarkSkipList_RandomGetRank-8        1000000              3408 ns/op               0 B/op          0 allocs/op
+BenchmarkSkipList_FIFOGetRank-8          4328094               332 ns/op               0 B/op          0 allocs/op
+BenchmarkSkipList_Delete-8               1000000              2728 ns/op               0 B/op          0 allocs/op
+PASS
+ok      gostd/container 23.345s
+
+
+从结果看来 rbtree > treap > skiplist
+
+而且rbtree和treap相差的不大
