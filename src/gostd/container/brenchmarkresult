@@ -37,6 +37,16 @@ PASS
 ok      gostd/container 23.345s
 
 
+F:\Code\go-study\src\gostd\container>go test -bench=.*AvlTree_ -benchmem -run=none
+goos: windows
+goarch: amd64
+pkg: gostd/container
+BenchmarkAvlTree_Insert-8        1000000              1122 ns/op              80 B/op          2 allocs/op
+BenchmarkAvlTree_Delete-8        1000000              1073 ns/op              32 B/op          1 allocs/op
+PASS
+ok      gostd/container 4.075s
+
+
 从结果看来 rbtree > treap > skiplist
 
 而且rbtree和treap相差的不大
